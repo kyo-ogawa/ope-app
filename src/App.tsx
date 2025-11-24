@@ -1,0 +1,224 @@
+import { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { ConfigForm } from './components/ConfigForm';
+import { LogViewer } from './components/LogViewer';
+import { Dashboard } from './components/Dashboard';
+import { MonitorConfig, PCStatus, CustomButton, LogEntry } from './types';
+import { Button } from "@/components/ui/button";
+import { Activity, LayoutDashboard, Settings, ScrollText } from "lucide-react";
+
+
+const DEFAULT_CONFIG: MonitorConfig = {
+  devices: [
+    { id: 'pc1', ip: '192.168.1.101', port: 8000, name: 'PC 1' },
+    { id: 'pc2', ip: '192.168.1.102', port: 8000, name: 'PC 2' }
+  ],
+  monitoredDeviceIds: ['pc1', 'pc2'],
+  localPort: 9000,
+  interval: 1000,
+  timeout: 3000,
+  webhookUrl: '',
+};
+
+type View = 'dashboard' | 'config' | 'logs';
+
+function App() {
+  const [config, setConfig] = useState<MonitorConfig>(DEFAULT_CONFIG);
+  const [statuses, setStatuses] = useState<Record<string, PCStatus>>({});
+  const [isMonitoring, setIsMonitoring] = useState(false);
+  const [buttonStates, setButtonStates] = useState<Record<string, boolean>>({});
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [currentView, setCurrentView] = useState<View>('dashboard');
+
+  useEffect(() => {
+    const unlisten = listen<Record<string, PCStatus>>('status-update', (event) => {
+      setStatuses(event.payload);
+    });
+
+    const unlistenLog = listen<LogEntry>('log-event', (event) => {
+      setLogs(prev => [...prev.slice(-99), event.payload]);
+    });
+
+    // Load config
+    invoke<MonitorConfig>('load_config').then((savedConfig) => {
+      if (savedConfig) {
+        setConfig(savedConfig);
+        // Auto-start
+        invoke('start_monitoring', { config: savedConfig });
+        setIsMonitoring(true);
+      }
+    }).catch((err) => {
+      console.error('Failed to load config:', err);
+    });
+
+    return () => {
+      unlisten.then(f => f());
+      unlistenLog.then(f => f());
+    };
+  }, []);
+
+  const handleSaveConfig = (newConfig: MonitorConfig) => {
+    setConfig(newConfig);
+    invoke('save_config', { config: newConfig });
+    invoke('start_monitoring', { config: newConfig });
+    setIsMonitoring(true);
+  };
+
+  const handleStop = () => {
+    invoke('stop_monitoring');
+    setIsMonitoring(false);
+  };
+
+  const handleButtonClick = (btn: CustomButton) => {
+    const isToggle = btn.mode === 'toggle';
+    const currentState = buttonStates[btn.id] || false;
+    const nextState = isToggle ? !currentState : false;
+
+    if (isToggle) {
+      setButtonStates(prev => ({ ...prev, [btn.id]: nextState }));
+    } else {
+      // Momentary effect
+      setButtonStates(prev => ({ ...prev, [btn.id]: true }));
+      setTimeout(() => {
+        setButtonStates(prev => ({ ...prev, [btn.id]: false }));
+      }, 200);
+    }
+
+    let targetAddress = btn.address;
+    let targetArgsStr = btn.args;
+
+    if (isToggle && !nextState) {
+      if (btn.addressOff) targetAddress = btn.addressOff;
+      targetArgsStr = btn.argsOff || '';
+    }
+
+    const args = targetArgsStr.split(',').map((arg: string) => {
+      const trimmed = arg.trim();
+      const num = Number(trimmed);
+      return isNaN(num) ? trimmed : num;
+    });
+
+    // Convert args to strings for Rust simplicity, or handle variants in Rust.
+    // My plan said `args: Vec<String>`. So I should convert everything to string.
+    // But wait, OSC args can be int/float.
+    // If I send strings, I need to parse them in Rust or send them as specific types.
+    // The plan said `args: Vec<String>`. I should probably stick to that or update the plan/implementation.
+    // Let's send strings for now and handle parsing in Rust if needed, or better, change Rust signature to accept variants if possible, but `Vec<String>` is easier for now.
+    // Actually, the Electron app sent numbers if they were numbers.
+    // I'll convert to string for the command, and Rust will parse them back if needed, or I can use `tauri::ipc::InvokeBody` or something.
+    // Let's stick to `Vec<String>` for the command signature as per plan.
+
+    // Resolve target device
+    const targetDevice = config.devices.find(d => d.id === btn.deviceId);
+    if (!targetDevice) {
+      console.error(`Device not found for button: ${btn.label}`);
+      return;
+    }
+
+    const stringArgs = args.map(String);
+
+    invoke('send_osc', {
+      ip: targetDevice.ip,
+      port: targetDevice.port,
+      address: targetAddress,
+      args: stringArgs
+    });
+  };
+
+  return (
+    <div className="flex h-screen bg-background text-foreground overflow-hidden">
+      {/* Sidebar Navigation */}
+      <aside className="w-64 border-r bg-muted/20 flex flex-col">
+        <div className="p-6 flex items-center gap-3 border-b">
+          <div className="p-2 bg-primary rounded-lg">
+            <Activity className="w-5 h-5 text-primary-foreground" />
+          </div>
+          <h1 className="font-bold tracking-tight">OSC Monitor</h1>
+        </div>
+
+        <nav className="flex-1 p-4 space-y-2">
+          <Button
+            variant={currentView === 'dashboard' ? "secondary" : "ghost"}
+            className="w-full justify-start gap-2"
+            onClick={() => setCurrentView('dashboard')}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            Dashboard
+          </Button>
+          <Button
+            variant={currentView === 'config' ? "secondary" : "ghost"}
+            className="w-full justify-start gap-2"
+            onClick={() => setCurrentView('config')}
+          >
+            <Settings className="w-4 h-4" />
+            Configuration
+          </Button>
+          <Button
+            variant={currentView === 'logs' ? "secondary" : "ghost"}
+            className="w-full justify-start gap-2"
+            onClick={() => setCurrentView('logs')}
+          >
+            <ScrollText className="w-4 h-4" />
+            System Logs
+            {logs.length > 0 && (
+              <span className="ml-auto text-xs bg-muted-foreground/20 px-1.5 py-0.5 rounded-full">
+                {logs.length}
+              </span>
+            )}
+          </Button>
+        </nav>
+
+        <div className="p-4 border-t">
+          {isMonitoring ? (
+            <Button onClick={handleStop} variant="destructive" className="w-full gap-2">
+              <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+              Stop Monitoring
+            </Button>
+          ) : (
+            <div className="text-center text-sm text-muted-foreground py-2">
+              Monitoring Stopped
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-auto">
+        <div className="container mx-auto p-8 max-w-5xl">
+          <header className="mb-8">
+            <h2 className="text-2xl font-bold tracking-tight capitalize">
+              {currentView === 'config' ? 'Configuration' : currentView === 'logs' ? 'System Logs' : 'Dashboard'}
+            </h2>
+            <p className="text-muted-foreground">
+              {currentView === 'dashboard' && 'Monitor target status and execute custom actions.'}
+              {currentView === 'config' && 'Manage monitoring targets, settings, and logic rules.'}
+              {currentView === 'logs' && 'View real-time system logs and OSC messages.'}
+            </p>
+          </header>
+
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+            {currentView === 'dashboard' && (
+              <Dashboard
+                config={config}
+                statuses={statuses}
+                buttonStates={buttonStates}
+                onButtonClick={handleButtonClick}
+              />
+            )}
+
+            {currentView === 'config' && (
+              <ConfigForm initialConfig={config} onSave={handleSaveConfig} />
+            )}
+
+            {currentView === 'logs' && (
+              <LogViewer logs={logs} onClear={() => setLogs([])} />
+            )}
+          </div>
+        </div>
+      </main>
+    </div>
+  )
+}
+
+export default App
