@@ -48,9 +48,25 @@ fn load_config(app: AppHandle) -> Result<Option<MonitorConfig>, String> {
 }
 
 #[tauri::command]
-fn get_local_ip() -> Result<String, String> {
-    match local_ip() {
-        Ok(ip) => Ok(ip.to_string()),
+fn get_local_ip() -> Result<Vec<String>, String> {
+    match local_ip_address::list_afinet_netifas() {
+        Ok(network_interfaces) => {
+            let ips: Vec<String> = network_interfaces
+                .iter()
+                .filter(|(_, ip)| !ip.is_loopback() && ip.is_ipv4())
+                .map(|(_, ip)| ip.to_string())
+                .collect();
+            
+            if ips.is_empty() {
+                // Fallback if no non-loopback ipv4 found, try just local_ip
+                match local_ip() {
+                    Ok(ip) => Ok(vec![ip.to_string()]),
+                    Err(e) => Err(e.to_string()),
+                }
+            } else {
+                Ok(ips)
+            }
+        },
         Err(e) => Err(e.to_string()),
     }
 }

@@ -32,12 +32,12 @@ interface ConfigFormProps {
 
 export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave }) => {
     const [config, setConfig] = useState<MonitorConfig>(initialConfig);
-    const [localIp, setLocalIp] = useState<string>('Loading...');
+    const [localIps, setLocalIps] = useState<string[]>([]);
 
     useEffect(() => {
-        invoke<string>('get_local_ip')
-            .then(ip => setLocalIp(ip))
-            .catch(() => setLocalIp('Unknown'));
+        invoke<string[]>('get_local_ip')
+            .then(ips => setLocalIps(ips))
+            .catch(() => setLocalIps(['Unknown']));
     }, []);
 
     useEffect(() => {
@@ -184,8 +184,16 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                     <Input value="Localhost" disabled />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>IP Address</Label>
-                                    <Input value={localIp} disabled className="font-mono" />
+                                    <Label>IP Addresses</Label>
+                                    <div className="space-y-1">
+                                        {localIps.length > 0 ? (
+                                            localIps.map((ip, i) => (
+                                                <Input key={i} value={ip} disabled className="font-mono h-8 text-sm" />
+                                            ))
+                                        ) : (
+                                            <Input value="Loading..." disabled className="font-mono" />
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Port (Listen)</Label>
