@@ -98,6 +98,11 @@ pub fn run() {
             send_osc,
             get_local_ip
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::CloseRequested { .. }, .. } = event {
+                app.exit(0);
+            }
+        });
 }
