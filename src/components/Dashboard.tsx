@@ -4,7 +4,8 @@ import { StatusCard } from './StatusCard';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Zap, Power, Play } from "lucide-react";
+import { Zap, Power, Play, Monitor } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface DashboardProps {
     config: MonitorConfig;
@@ -52,9 +53,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonSt
                         Custom Actions
                     </h3>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {config.customButtons.map(btn => {
+                            {config.customButtons.map(btn => {
                             const isToggle = btn.mode === 'toggle';
                             const isOn = buttonStates[btn.id] || false;
+                            const targetDevices = config.devices.filter(d => btn.deviceIds.includes(d.id));
 
                             return (
                                 <Card key={btn.id} className="flex flex-col justify-between overflow-hidden">
@@ -64,6 +66,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonSt
                                             <CardDescription className="text-xs line-clamp-2" title={btn.description}>
                                                 {btn.description}
                                             </CardDescription>
+                                        )}
+                                        {targetDevices.length > 0 && (
+                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                {targetDevices.map(d => (
+                                                    <Badge key={d.id} variant="secondary" className="text-xs font-normal flex items-center gap-1">
+                                                        <Monitor className="w-3 h-3" />
+                                                        {d.name}
+                                                    </Badge>
+                                                ))}
+                                            </div>
                                         )}
                                     </CardHeader>
                                     <CardContent className="p-4 pt-2">

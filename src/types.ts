@@ -26,8 +26,8 @@ export interface CustomButton {
     description?: string;
     mode: ButtonMode;
 
-    // Common
-    deviceId: string;
+    // Common - 複数デバイスに送信可能
+    deviceIds: string[];
 
     // Momentary or Toggle ON
     address: string;

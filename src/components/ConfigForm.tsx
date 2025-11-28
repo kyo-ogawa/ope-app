@@ -140,7 +140,7 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                     mode: 'momentary',
                     address: '/test',
                     args: [{ value: '1', argType: 'int' }],
-                    deviceId: prev.devices.length > 0 ? prev.devices[0].id : ''
+                    deviceIds: prev.devices.length > 0 ? [prev.devices[0].id] : []
                 }
             ]
         }));
@@ -528,9 +528,13 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                                 <span className="font-medium text-foreground capitalize">{btn.mode}</span>
                                             </div>
                                             <div className="flex justify-between">
-                                                <span>Target:</span>
-                                                <span className="font-mono text-foreground truncate max-w-[120px]">
-                                                    {config.devices.find(d => d.id === btn.deviceId)?.name || 'Unknown'}
+                                                <span>Targets:</span>
+                                                <span className="font-mono text-foreground truncate max-w-[120px]" title={btn.deviceIds.map(id => config.devices.find(d => d.id === id)?.name || 'Unknown').join(', ')}>
+                                                    {btn.deviceIds.length > 0
+                                                        ? btn.deviceIds.length === 1
+                                                            ? config.devices.find(d => d.id === btn.deviceIds[0])?.name || 'Unknown'
+                                                            : `${btn.deviceIds.length} devices`
+                                                        : 'None'}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between">
@@ -597,20 +601,29 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                         </div>
                                         <div className="grid grid-cols-1 gap-4 pt-2 border-t">
                                             <div className="space-y-2">
-                                                <Label>Target Device</Label>
-                                                <Select
-                                                    value={editingButton.deviceId}
-                                                    onValueChange={(val) => setEditingButton({ ...editingButton, deviceId: val })}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Select a device" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {config.devices.map(d => (
-                                                            <SelectItem key={d.id} value={d.id}>{d.name} ({d.ip})</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                                <Label>Target Devices (複数選択可)</Label>
+                                                <div className="grid grid-cols-2 gap-2 border p-3 rounded bg-muted/20 max-h-40 overflow-y-auto">
+                                                    {config.devices.map(d => (
+                                                        <div key={d.id} className="flex items-center space-x-2">
+                                                            <Checkbox
+                                                                id={`btn-device-${d.id}`}
+                                                                checked={editingButton.deviceIds.includes(d.id)}
+                                                                onCheckedChange={(checked) => {
+                                                                    const newIds = checked
+                                                                        ? [...editingButton.deviceIds, d.id]
+                                                                        : editingButton.deviceIds.filter(id => id !== d.id);
+                                                                    setEditingButton({ ...editingButton, deviceIds: newIds });
+                                                                }}
+                                                            />
+                                                            <Label htmlFor={`btn-device-${d.id}`} className="text-sm cursor-pointer">
+                                                                {d.name} ({d.ip})
+                                                            </Label>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                {config.devices.length === 0 && (
+                                                    <p className="text-sm text-muted-foreground">No devices available. Add devices in the Devices tab first.</p>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

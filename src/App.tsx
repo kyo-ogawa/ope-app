@@ -98,19 +98,22 @@ function App() {
       targetArgs = btn.argsOff || [];
     }
 
-    // Resolve target device
-    const targetDevice = config.devices.find(d => d.id === btn.deviceId);
-    if (!targetDevice) {
-      console.error(`Device not found for button: ${btn.label}`);
+    // Resolve target devices (複数デバイス対応)
+    const targetDevices = config.devices.filter(d => btn.deviceIds.includes(d.id));
+    if (targetDevices.length === 0) {
+      console.error(`No devices found for button: ${btn.label}`);
       return;
     }
 
-    invoke('send_osc', {
-      ip: targetDevice.ip,
-      port: targetDevice.port,
-      address: targetAddress,
-      args: targetArgs
-    });
+    // 各デバイスにOSCを送信
+    for (const targetDevice of targetDevices) {
+      invoke('send_osc', {
+        ip: targetDevice.ip,
+        port: targetDevice.port,
+        address: targetAddress,
+        args: targetArgs
+      });
+    }
   };
 
   return (

@@ -100,7 +100,6 @@ pub fn run() {
             stop_monitoring,
             save_config,
             load_config,
-            load_config,
             send_osc,
             get_local_ip
         ])

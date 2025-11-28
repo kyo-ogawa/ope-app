@@ -27,7 +27,7 @@ pub struct CustomButton {
     pub description: Option<String>,
     pub mode: String, // "momentary" | "toggle"
 
-    pub device_id: String,
+    pub device_ids: Vec<String>, // 複数デバイスに送信可能
 
     pub address: String,
     pub args: Vec<OscArg>,

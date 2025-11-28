@@ -473,15 +473,18 @@ fn evaluate_logics(
 
         // Execute Action
         if let Some(btn) = buttons.iter().find(|b| b.id == logic.action_button_id) {
-            // Resolve target device
-            if let Some(device) = devices.iter().find(|d| d.id == btn.device_id) {
+            // Resolve target devices (複数デバイス対応)
+            let target_devices: Vec<_> = devices.iter().filter(|d| btn.device_ids.contains(&d.id)).collect();
+            if !target_devices.is_empty() {
                 let osc = osc_service.lock().unwrap();
                 let args = convert_osc_args(&btn.args);
-                println!(
-                    "Executing Logic: {} -> {} ({})",
-                    logic.name, btn.label, device.name
-                );
-                osc.send(&device.ip, device.port, &btn.address, args, Some(log_tx));
+                for device in target_devices {
+                    println!(
+                        "Executing Logic: {} -> {} ({})",
+                        logic.name, btn.label, device.name
+                    );
+                    osc.send(&device.ip, device.port, &btn.address, args.clone(), Some(log_tx));
+                }
             }
         }
     }
