@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getVersion } from '@tauri-apps/api/app';
 import { ConfigForm } from './components/ConfigForm';
 import { LogViewer } from './components/LogViewer';
 import { Dashboard } from './components/Dashboard';
@@ -30,8 +31,12 @@ function App() {
   const [buttonStates, setButtonStates] = useState<Record<string, boolean>>({});
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [currentView, setCurrentView] = useState<View>('dashboard');
+  const [appVersion, setAppVersion] = useState<string>('');
 
   useEffect(() => {
+    // Get app version
+    getVersion().then(setAppVersion).catch(console.error);
+
     const unlisten = listen<Record<string, PCStatus>>('status-update', (event) => {
       setStatuses(event.payload);
     });
@@ -116,7 +121,7 @@ function App() {
           <div className="p-2 bg-primary rounded-lg">
             <Activity className="w-5 h-5 text-primary-foreground" />
           </div>
-          <h1 className="font-bold tracking-tight">OSC Monitor</h1>
+          <h1 className="font-bold tracking-tight">ope-app</h1>
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
@@ -163,6 +168,12 @@ function App() {
             </div>
           )}
         </div>
+
+        {appVersion && (
+          <div className="px-4 pb-4 text-xs text-muted-foreground/50 text-center">
+            v{appVersion}
+          </div>
+        )}
       </aside>
 
       {/* Main Content */}

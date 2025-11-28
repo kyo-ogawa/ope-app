@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../streamdeck-plugin-opeapp"
+		}
+	],
+	"settings": {}
+}

@@ -1,4 +1,4 @@
-# OSC Alive Monitoring App
+# ope-app
 
 OSC (Open Sound Control) を使用した死活監視アプリケーションです。
 ターゲットPCへのPing送信による監視、OSCメッセージによる制御、Slackへの通知機能を備えています。
