@@ -86,28 +86,12 @@ function App() {
     }
 
     let targetAddress = btn.address;
-    let targetArgsStr = btn.args;
+    let targetArgs = btn.args;
 
     if (isToggle && !nextState) {
       if (btn.addressOff) targetAddress = btn.addressOff;
-      targetArgsStr = btn.argsOff || '';
+      targetArgs = btn.argsOff || [];
     }
-
-    const args = targetArgsStr.split(',').map((arg: string) => {
-      const trimmed = arg.trim();
-      const num = Number(trimmed);
-      return isNaN(num) ? trimmed : num;
-    });
-
-    // Convert args to strings for Rust simplicity, or handle variants in Rust.
-    // My plan said `args: Vec<String>`. So I should convert everything to string.
-    // But wait, OSC args can be int/float.
-    // If I send strings, I need to parse them in Rust or send them as specific types.
-    // The plan said `args: Vec<String>`. I should probably stick to that or update the plan/implementation.
-    // Let's send strings for now and handle parsing in Rust if needed, or better, change Rust signature to accept variants if possible, but `Vec<String>` is easier for now.
-    // Actually, the Electron app sent numbers if they were numbers.
-    // I'll convert to string for the command, and Rust will parse them back if needed, or I can use `tauri::ipc::InvokeBody` or something.
-    // Let's stick to `Vec<String>` for the command signature as per plan.
 
     // Resolve target device
     const targetDevice = config.devices.find(d => d.id === btn.deviceId);
@@ -116,13 +100,11 @@ function App() {
       return;
     }
 
-    const stringArgs = args.map(String);
-
     invoke('send_osc', {
       ip: targetDevice.ip,
       port: targetDevice.port,
       address: targetAddress,
-      args: stringArgs
+      args: targetArgs
     });
   };
 

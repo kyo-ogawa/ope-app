@@ -12,6 +12,12 @@ pub struct Device {
 // We will replace it with Device in MonitorConfig.
 // But for now, let's remove PCConfig and use Device.
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OscArg {
+    pub value: String,
+    pub arg_type: String, // "string", "int", "float"
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,14 +28,12 @@ pub struct CustomButton {
     pub mode: String, // "momentary" | "toggle"
 
     pub device_id: String,
-    // pub target_ip: String, // Removed
-    // pub target_port: u16, // Removed
 
     pub address: String,
-    pub args: String,
+    pub args: Vec<OscArg>,
 
     pub address_off: Option<String>,
-    pub args_off: Option<String>,
+    pub args_off: Option<Vec<OscArg>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

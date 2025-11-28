@@ -15,6 +15,11 @@ export interface PCConfig {
 
 export type ButtonMode = 'momentary' | 'toggle';
 
+export interface OscArg {
+    value: string;
+    argType: 'string' | 'int' | 'float';
+}
+
 export interface CustomButton {
     id: string;
     label: string;
@@ -23,16 +28,14 @@ export interface CustomButton {
 
     // Common
     deviceId: string;
-    // targetIp: string; // Removed
-    // targetPort: number; // Removed
 
     // Momentary or Toggle ON
     address: string;
-    args: string; // Comma separated values
+    args: OscArg[];
 
     // Toggle OFF
     addressOff?: string;
-    argsOff?: string;
+    argsOff?: OscArg[];
 }
 
 export interface LogicRule {

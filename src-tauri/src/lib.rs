@@ -2,12 +2,12 @@ mod models;
 mod monitor;
 mod osc_service;
 
+use local_ip_address::local_ip;
 use models::MonitorConfig;
 use monitor::MonitorService;
 use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, State};
-use local_ip_address::local_ip;
 
 struct AppState {
     monitor_service: MonitorService,
@@ -24,7 +24,13 @@ fn stop_monitoring(state: State<'_, AppState>) {
 }
 
 #[tauri::command]
-fn send_osc(state: State<'_, AppState>, ip: String, port: u16, address: String, args: Vec<String>) {
+fn send_osc(
+    state: State<'_, AppState>,
+    ip: String,
+    port: u16,
+    address: String,
+    args: Vec<models::OscArg>,
+) {
     state.monitor_service.send_osc(&ip, port, &address, args);
 }
 
@@ -56,7 +62,7 @@ fn get_local_ip() -> Result<Vec<String>, String> {
                 .filter(|(_, ip)| !ip.is_loopback() && ip.is_ipv4())
                 .map(|(_, ip)| ip.to_string())
                 .collect();
-            
+
             if ips.is_empty() {
                 // Fallback if no non-loopback ipv4 found, try just local_ip
                 match local_ip() {
@@ -66,7 +72,7 @@ fn get_local_ip() -> Result<Vec<String>, String> {
             } else {
                 Ok(ips)
             }
-        },
+        }
         Err(e) => Err(e.to_string()),
     }
 }
@@ -101,7 +107,11 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            if let tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::CloseRequested { .. }, .. } = event {
+            if let tauri::RunEvent::WindowEvent {
+                event: tauri::WindowEvent::CloseRequested { .. },
+                ..
+            } = event
+            {
                 app.exit(0);
             }
         });

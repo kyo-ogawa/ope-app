@@ -20,8 +20,17 @@ import {
     Save,
     Server,
     Network,
-    Laptop
+    Laptop,
+    Pencil
 } from "lucide-react";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 
 interface ConfigFormProps {
     initialConfig: MonitorConfig;
@@ -33,6 +42,13 @@ interface ConfigFormProps {
 export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave }) => {
     const [config, setConfig] = useState<MonitorConfig>(initialConfig);
     const [localIps, setLocalIps] = useState<string[]>([]);
+    const [editingDevice, setEditingDevice] = useState<Device | null>(null);
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+    const [editingButton, setEditingButton] = useState<CustomButton | null>(null);
+    const [isEditButtonDialogOpen, setIsEditButtonDialogOpen] = useState(false);
+
+    const [editingLogic, setEditingLogic] = useState<LogicRule | null>(null);
+    const [isEditLogicDialogOpen, setIsEditLogicDialogOpen] = useState(false);
 
     useEffect(() => {
         invoke<string[]>('get_local_ip')
@@ -44,12 +60,24 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
         setConfig(initialConfig);
     }, [initialConfig]);
 
-    const updateDevice = (index: number, key: keyof Device, value: string | number) => {
+
+
+    const handleEditDevice = (device: Device) => {
+        setEditingDevice({ ...device });
+        setIsEditDialogOpen(true);
+    };
+
+    const saveEditedDevice = () => {
+        if (!editingDevice) return;
+
         setConfig(prev => {
-            const newDevices = [...prev.devices];
-            newDevices[index] = { ...newDevices[index], [key]: value };
+            const newDevices = prev.devices.map(d =>
+                d.id === editingDevice.id ? editingDevice : d
+            );
             return { ...prev, devices: newDevices };
         });
+        setIsEditDialogOpen(false);
+        setEditingDevice(null);
     };
 
     const addDevice = () => {
@@ -81,13 +109,24 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
         });
     };
 
-    const updateButton = (index: number, key: keyof CustomButton, value: string | number) => {
+
+
+    const handleEditButton = (button: CustomButton) => {
+        setEditingButton({ ...button });
+        setIsEditButtonDialogOpen(true);
+    };
+
+    const saveEditedButton = () => {
+        if (!editingButton) return;
+
         setConfig(prev => {
-            const newButtons = [...(prev.customButtons || [])];
-            // @ts-ignore
-            newButtons[index] = { ...newButtons[index], [key]: value };
+            const newButtons = (prev.customButtons || []).map(b =>
+                b.id === editingButton.id ? editingButton : b
+            );
             return { ...prev, customButtons: newButtons };
         });
+        setIsEditButtonDialogOpen(false);
+        setEditingButton(null);
     };
 
     const addButton = () => {
@@ -100,7 +139,7 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                     label: 'New Button',
                     mode: 'momentary',
                     address: '/test',
-                    args: '1',
+                    args: [{ value: '1', argType: 'int' }],
                     deviceId: prev.devices.length > 0 ? prev.devices[0].id : ''
                 }
             ]
@@ -114,12 +153,25 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
         });
     };
 
-    const updateLogic = (index: number, key: keyof LogicRule, value: any) => {
+    const handleEditLogic = (logic: LogicRule) => {
+        setEditingLogic({ ...logic });
+        setIsEditLogicDialogOpen(true);
+    };
+
+    const saveEditedLogic = () => {
+        if (!editingLogic) return;
         setConfig(prev => {
             const newLogics = [...(prev.logics || [])];
-            newLogics[index] = { ...newLogics[index], [key]: value };
+            const index = newLogics.findIndex(l => l.id === editingLogic.id);
+            if (index !== -1) {
+                newLogics[index] = editingLogic;
+            } else {
+                // If it's a new logic not in the list yet (though we add it first usually)
+                // But here we edit existing ones.
+            }
             return { ...prev, logics: newLogics };
         });
+        setIsEditLogicDialogOpen(false);
     };
 
     const addLogic = () => {
@@ -202,44 +254,103 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                             </CardContent>
                         </Card>
 
-                        {config.devices.map((device, index) => (
-                            <Card key={device.id}>
-                                <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                                    <CardTitle className="text-base">Device #{index + 1}</CardTitle>
-                                    {config.devices.length > 1 && (
-                                        <Button type="button" variant="ghost" size="icon" onClick={() => removeDevice(index)} className="text-destructive hover:text-destructive/90 hover:bg-destructive/10">
-                                            <Trash2 className="w-4 h-4" />
-                                        </Button>
-                                    )}
-                                </CardHeader>
-                                <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>Name</Label>
-                                        <Input
-                                            value={device.name}
-                                            onChange={e => updateDevice(index, 'name', e.target.value)}
-                                            placeholder="Device Name"
-                                        />
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {config.devices.map((device, index) => (
+                                <Card key={device.id}>
+                                    <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                                        <div className="flex items-center gap-2">
+                                            <Laptop className="w-4 h-4 text-muted-foreground" />
+                                            <CardTitle className="text-base font-medium">{device.name}</CardTitle>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8"
+                                                onClick={() => handleEditDevice(device)}
+                                            >
+                                                <Pencil className="w-4 h-4" />
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => removeDevice(index)}
+                                                className="h-8 w-8 text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </Button>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-sm text-muted-foreground space-y-1">
+                                            <div className="flex justify-between">
+                                                <span>IP Address:</span>
+                                                <span className="font-mono text-foreground">{device.ip}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>Port:</span>
+                                                <span className="font-mono text-foreground">{device.port}</span>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+
+                        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Edit Device</DialogTitle>
+                                    <DialogDescription>
+                                        Make changes to the device configuration here. Click save when you're done.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                {editingDevice && (
+                                    <div className="grid gap-4 py-4">
+                                        <div className="grid grid-cols-4 items-center gap-4">
+                                            <Label htmlFor="name" className="text-right">
+                                                Name
+                                            </Label>
+                                            <Input
+                                                id="name"
+                                                value={editingDevice.name}
+                                                onChange={(e) => setEditingDevice({ ...editingDevice, name: e.target.value })}
+                                                className="col-span-3"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-4 items-center gap-4">
+                                            <Label htmlFor="ip" className="text-right">
+                                                IP Address
+                                            </Label>
+                                            <Input
+                                                id="ip"
+                                                value={editingDevice.ip}
+                                                onChange={(e) => setEditingDevice({ ...editingDevice, ip: e.target.value })}
+                                                className="col-span-3"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-4 items-center gap-4">
+                                            <Label htmlFor="port" className="text-right">
+                                                Port
+                                            </Label>
+                                            <Input
+                                                id="port"
+                                                type="number"
+                                                value={editingDevice.port}
+                                                onChange={(e) => setEditingDevice({ ...editingDevice, port: parseInt(e.target.value) })}
+                                                className="col-span-3"
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label>IP Address</Label>
-                                        <Input
-                                            value={device.ip}
-                                            onChange={e => updateDevice(index, 'ip', e.target.value)}
-                                            placeholder="192.168.1.x"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Port</Label>
-                                        <Input
-                                            type="number"
-                                            value={device.port}
-                                            onChange={e => updateDevice(index, 'port', parseInt(e.target.value))}
-                                        />
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
+                                )}
+                                <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
+                                    <Button type="button" onClick={saveEditedDevice}>Save changes</Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
                     </TabsContent>
 
                     <TabsContent value="targets" className="space-y-4 mt-4">
@@ -381,101 +492,279 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                 <Plus className="w-4 h-4" /> Add Button
                             </Button>
                         </div>
-                        {(config.customButtons || []).map((btn, index) => (
-                            <Card key={btn.id}>
-                                <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                                    <CardTitle className="text-base">Button #{index + 1}</CardTitle>
-                                    <Button type="button" variant="ghost" size="icon" onClick={() => removeButton(index)} className="text-destructive hover:text-destructive/90 hover:bg-destructive/10">
-                                        <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {(config.customButtons || []).map((btn, index) => (
+                                <Card key={btn.id}>
+                                    <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                                        <div className="flex items-center gap-2">
+                                            <MousePointer2 className="w-4 h-4 text-muted-foreground" />
+                                            <CardTitle className="text-base font-medium">{btn.label}</CardTitle>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8"
+                                                onClick={() => handleEditButton(btn)}
+                                            >
+                                                <Pencil className="w-4 h-4" />
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => removeButton(index)}
+                                                className="h-8 w-8 text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </Button>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-sm text-muted-foreground space-y-1">
+                                            <div className="flex justify-between">
+                                                <span>Mode:</span>
+                                                <span className="font-medium text-foreground capitalize">{btn.mode}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>Target:</span>
+                                                <span className="font-mono text-foreground truncate max-w-[120px]">
+                                                    {config.devices.find(d => d.id === btn.deviceId)?.name || 'Unknown'}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>Address:</span>
+                                                <span className="font-mono text-foreground truncate max-w-[150px]" title={btn.address}>{btn.address}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>Args:</span>
+                                                <span className="font-mono text-foreground truncate max-w-[150px]" title={btn.args.map(a => `${a.value} (${a.argType})`).join(', ')}>
+                                                    {btn.args.map(a => `${a.value} (${a.argType})`).join(', ')}
+                                                </span>
+                                            </div>
+                                            {btn.description && (
+                                                <div className="text-xs italic mt-2 border-t pt-2">
+                                                    {btn.description}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+
+                        <Dialog open={isEditButtonDialogOpen} onOpenChange={setIsEditButtonDialogOpen}>
+                            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                                <DialogHeader>
+                                    <DialogTitle>Edit Button</DialogTitle>
+                                    <DialogDescription>
+                                        Configure the custom button actions.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                {editingButton && (
+                                    <div className="space-y-4 py-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label>Label</Label>
+                                                <Input
+                                                    value={editingButton.label}
+                                                    onChange={e => setEditingButton({ ...editingButton, label: e.target.value })}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Mode</Label>
+                                                <Select
+                                                    value={editingButton.mode}
+                                                    onValueChange={(val) => setEditingButton({ ...editingButton, mode: val as 'momentary' | 'toggle' })}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="momentary">Momentary (One-shot)</SelectItem>
+                                                        <SelectItem value="toggle">Toggle (ON/OFF)</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
                                         <div className="space-y-2">
-                                            <Label>Label</Label>
+                                            <Label>Description</Label>
                                             <Input
-                                                value={btn.label}
-                                                onChange={e => updateButton(index, 'label', e.target.value)}
+                                                value={editingButton.description || ''}
+                                                onChange={e => setEditingButton({ ...editingButton, description: e.target.value })}
                                             />
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label>Mode</Label>
-                                            <Select
-                                                value={btn.mode}
-                                                onValueChange={(val) => updateButton(index, 'mode', val)}
-                                            >
-                                                <SelectTrigger>
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="momentary">Momentary (One-shot)</SelectItem>
-                                                    <SelectItem value="toggle">Toggle (ON/OFF)</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                        <div className="grid grid-cols-1 gap-4 pt-2 border-t">
+                                            <div className="space-y-2">
+                                                <Label>Target Device</Label>
+                                                <Select
+                                                    value={editingButton.deviceId}
+                                                    onValueChange={(val) => setEditingButton({ ...editingButton, deviceId: val })}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Select a device" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {config.devices.map(d => (
+                                                            <SelectItem key={d.id} value={d.id}>{d.name} ({d.ip})</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Description</Label>
-                                        <Input
-                                            value={btn.description || ''}
-                                            onChange={e => updateButton(index, 'description', e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-4 pt-2 border-t">
-                                        <div className="space-y-2">
-                                            <Label>Target Device</Label>
-                                            <Select
-                                                value={btn.deviceId}
-                                                onValueChange={(val) => updateButton(index, 'deviceId', val)}
-                                            >
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Select a device" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {config.devices.map(d => (
-                                                        <SelectItem key={d.id} value={d.id}>{d.name} ({d.ip})</SelectItem>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label>Address {editingButton.mode === 'toggle' ? '(ON)' : ''}</Label>
+                                                <Input
+                                                    value={editingButton.address}
+                                                    onChange={e => setEditingButton({ ...editingButton, address: e.target.value })}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Args {editingButton.mode === 'toggle' ? '(ON)' : ''}</Label>
+                                                <div className="space-y-2">
+                                                    {editingButton.args.map((arg, i) => (
+                                                        <div key={i} className="flex gap-2">
+                                                            <Select
+                                                                value={arg.argType}
+                                                                onValueChange={(val) => {
+                                                                    const newArgs = [...editingButton.args];
+                                                                    newArgs[i] = { ...newArgs[i], argType: val as 'string' | 'int' | 'float' };
+                                                                    setEditingButton({ ...editingButton, args: newArgs });
+                                                                }}
+                                                            >
+                                                                <SelectTrigger className="w-[100px]">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="string">String</SelectItem>
+                                                                    <SelectItem value="int">Int</SelectItem>
+                                                                    <SelectItem value="float">Float</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                            <Input
+                                                                value={arg.value}
+                                                                onChange={(e) => {
+                                                                    const newArgs = [...editingButton.args];
+                                                                    newArgs[i] = { ...newArgs[i], value: e.target.value };
+                                                                    setEditingButton({ ...editingButton, args: newArgs });
+                                                                }}
+                                                                className="flex-1"
+                                                                placeholder="Value"
+                                                            />
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => {
+                                                                    const newArgs = editingButton.args.filter((_, idx) => idx !== i);
+                                                                    setEditingButton({ ...editingButton, args: newArgs });
+                                                                }}
+                                                                className="text-destructive"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </Button>
+                                                        </div>
                                                     ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Address {btn.mode === 'toggle' ? '(ON)' : ''}</Label>
-                                            <Input
-                                                value={btn.address}
-                                                onChange={e => updateButton(index, 'address', e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Args {btn.mode === 'toggle' ? '(ON)' : ''}</Label>
-                                            <Input
-                                                value={btn.args}
-                                                onChange={e => updateButton(index, 'args', e.target.value)}
-                                            />
-                                        </div>
-                                    </div>
-                                    {btn.mode === 'toggle' && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 bg-muted/30 p-2 rounded">
-                                            <div className="space-y-2">
-                                                <Label>Address (OFF)</Label>
-                                                <Input
-                                                    value={btn.addressOff || ''}
-                                                    onChange={e => updateButton(index, 'addressOff', e.target.value)}
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Args (OFF)</Label>
-                                                <Input
-                                                    value={btn.argsOff || ''}
-                                                    onChange={e => updateButton(index, 'argsOff', e.target.value)}
-                                                />
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            setEditingButton({
+                                                                ...editingButton,
+                                                                args: [...editingButton.args, { value: '', argType: 'string' }]
+                                                            });
+                                                        }}
+                                                        className="w-full gap-2"
+                                                    >
+                                                        <Plus className="w-4 h-4" /> Add Argument
+                                                    </Button>
+                                                </div>
                                             </div>
                                         </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        ))}
+                                        {editingButton.mode === 'toggle' && (
+                                            <div className="grid grid-cols-1 gap-4 pt-2 bg-muted/30 p-2 rounded">
+                                                <div className="space-y-2">
+                                                    <Label>Address (OFF)</Label>
+                                                    <Input
+                                                        value={editingButton.addressOff || ''}
+                                                        onChange={e => setEditingButton({ ...editingButton, addressOff: e.target.value })}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>Args (OFF)</Label>
+                                                    <div className="space-y-2">
+                                                        {(editingButton.argsOff || []).map((arg, i) => (
+                                                            <div key={i} className="flex gap-2">
+                                                                <Select
+                                                                    value={arg.argType}
+                                                                    onValueChange={(val) => {
+                                                                        const newArgs = [...(editingButton.argsOff || [])];
+                                                                        newArgs[i] = { ...newArgs[i], argType: val as 'string' | 'int' | 'float' };
+                                                                        setEditingButton({ ...editingButton, argsOff: newArgs });
+                                                                    }}
+                                                                >
+                                                                    <SelectTrigger className="w-[100px]">
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="string">String</SelectItem>
+                                                                        <SelectItem value="int">Int</SelectItem>
+                                                                        <SelectItem value="float">Float</SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                                <Input
+                                                                    value={arg.value}
+                                                                    onChange={(e) => {
+                                                                        const newArgs = [...(editingButton.argsOff || [])];
+                                                                        newArgs[i] = { ...newArgs[i], value: e.target.value };
+                                                                        setEditingButton({ ...editingButton, argsOff: newArgs });
+                                                                    }}
+                                                                    className="flex-1"
+                                                                    placeholder="Value"
+                                                                />
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    onClick={() => {
+                                                                        const newArgs = (editingButton.argsOff || []).filter((_, idx) => idx !== i);
+                                                                        setEditingButton({ ...editingButton, argsOff: newArgs });
+                                                                    }}
+                                                                    className="text-destructive"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </Button>
+                                                            </div>
+                                                        ))}
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => {
+                                                                setEditingButton({
+                                                                    ...editingButton,
+                                                                    argsOff: [...(editingButton.argsOff || []), { value: '', argType: 'string' }]
+                                                                });
+                                                            }}
+                                                            className="w-full gap-2"
+                                                        >
+                                                            <Plus className="w-4 h-4" /> Add Argument
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={() => setIsEditButtonDialogOpen(false)}>Cancel</Button>
+                                    <Button type="button" onClick={saveEditedButton}>Save changes</Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
                     </TabsContent>
 
                     <TabsContent value="logics" className="space-y-4 mt-4">
@@ -485,88 +774,134 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                 <Plus className="w-4 h-4" /> Add Rule
                             </Button>
                         </div>
-                        {(config.logics || []).map((logic, index) => (
-                            <Card key={logic.id}>
-                                <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                                    <CardTitle className="text-base">Rule #{index + 1}</CardTitle>
-                                    <div className="flex items-center gap-2">
+                        <div className="grid grid-cols-1 gap-4">
+                            {(config.logics || []).map((logic, index) => (
+                                <Card key={logic.id}>
+                                    <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                                        <div className="flex items-center gap-2">
+                                            <Workflow className="w-4 h-4 text-muted-foreground" />
+                                            <CardTitle className="text-base font-medium">{logic.name}</CardTitle>
+                                            {!logic.enabled && <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded">Disabled</span>}
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditLogic(logic)}>
+                                                <Pencil className="w-4 h-4" />
+                                            </Button>
+                                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => removeLogic(index)}>
+                                                <Trash2 className="w-4 h-4" />
+                                            </Button>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-sm text-muted-foreground space-y-1">
+                                            <div className="flex justify-between">
+                                                <span>Trigger:</span>
+                                                <span className="font-medium text-foreground">
+                                                    {logic.triggerStatus === 'offline' ? 'Goes OFFLINE' : 'Goes ONLINE'}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>Action:</span>
+                                                <span className="font-medium text-foreground">
+                                                    {config.customButtons?.find(b => b.id === logic.actionButtonId)?.label || 'None'}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>Targets:</span>
+                                                <span className="font-medium text-foreground truncate max-w-[200px]">
+                                                    {logic.targetIds.map(tid => config.devices.find(d => d.id === tid)?.name).filter(Boolean).join(', ') || 'None'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+
+                        <Dialog open={isEditLogicDialogOpen} onOpenChange={setIsEditLogicDialogOpen}>
+                            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                                <DialogHeader>
+                                    <DialogTitle>Edit Logic Rule</DialogTitle>
+                                    <DialogDescription>Configure automation rules.</DialogDescription>
+                                </DialogHeader>
+                                {editingLogic && (
+                                    <div className="grid gap-4 py-4">
                                         <div className="flex items-center space-x-2">
                                             <Checkbox
-                                                id={`enabled-${logic.id}`}
-                                                checked={logic.enabled}
-                                                onCheckedChange={(checked) => updateLogic(index, 'enabled', checked === true)}
+                                                id="edit-logic-enabled"
+                                                checked={editingLogic.enabled}
+                                                onCheckedChange={(checked) => setEditingLogic({ ...editingLogic, enabled: checked === true })}
                                             />
-                                            <Label htmlFor={`enabled-${logic.id}`}>Enabled</Label>
-                                        </div>
-                                        <Button type="button" variant="ghost" size="icon" onClick={() => removeLogic(index)} className="text-destructive hover:text-destructive/90 hover:bg-destructive/10">
-                                            <Trash2 className="w-4 h-4" />
-                                        </Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="space-y-2">
-                                        <Label>Rule Name</Label>
-                                        <Input
-                                            value={logic.name}
-                                            onChange={e => updateLogic(index, 'name', e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Trigger Status</Label>
-                                            <Select
-                                                value={logic.triggerStatus}
-                                                onValueChange={(val) => updateLogic(index, 'triggerStatus', val)}
-                                            >
-                                                <SelectTrigger>
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="offline">When Target goes OFFLINE</SelectItem>
-                                                    <SelectItem value="online">When Target goes ONLINE</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                            <Label htmlFor="edit-logic-enabled">Enabled</Label>
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Action (Execute Button)</Label>
-                                            <Select
-                                                value={logic.actionButtonId}
-                                                onValueChange={(val) => updateLogic(index, 'actionButtonId', val)}
-                                            >
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Select a button" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {(config.customButtons || []).map(btn => (
-                                                        <SelectItem key={btn.id} value={btn.id}>{btn.label}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                            <Label>Rule Name</Label>
+                                            <Input
+                                                value={editingLogic.name}
+                                                onChange={e => setEditingLogic({ ...editingLogic, name: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label>Trigger Status</Label>
+                                                <Select
+                                                    value={editingLogic.triggerStatus}
+                                                    onValueChange={(val) => setEditingLogic({ ...editingLogic, triggerStatus: val as 'online' | 'offline' })}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="offline">When Target goes OFFLINE</SelectItem>
+                                                        <SelectItem value="online">When Target goes ONLINE</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Action (Execute Button)</Label>
+                                                <Select
+                                                    value={editingLogic.actionButtonId}
+                                                    onValueChange={(val) => setEditingLogic({ ...editingLogic, actionButtonId: val })}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Select a button" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {(config.customButtons || []).map(btn => (
+                                                            <SelectItem key={btn.id} value={btn.id}>{btn.label}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Targets (Any of selected)</Label>
+                                            <div className="grid grid-cols-2 gap-2 border p-2 rounded bg-muted/20">
+                                                {config.devices.filter(d => config.monitoredDeviceIds.includes(d.id)).map(device => (
+                                                    <div key={device.id} className="flex items-center space-x-2">
+                                                        <Checkbox
+                                                            id={`edit-logic-${device.id}`}
+                                                            checked={editingLogic.targetIds.includes(device.id)}
+                                                            onCheckedChange={(checked) => {
+                                                                const newIds = checked
+                                                                    ? [...editingLogic.targetIds, device.id]
+                                                                    : editingLogic.targetIds.filter(id => id !== device.id);
+                                                                setEditingLogic({ ...editingLogic, targetIds: newIds });
+                                                            }}
+                                                        />
+                                                        <Label htmlFor={`edit-logic-${device.id}`}>{device.name}</Label>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label>Targets (Any of selected)</Label>
-                                        <div className="grid grid-cols-2 gap-2 border p-2 rounded bg-muted/20">
-                                            {config.devices.filter(d => config.monitoredDeviceIds.includes(d.id)).map(device => (
-                                                <div key={device.id} className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                        id={`logic-${logic.id}-${device.id}`}
-                                                        checked={logic.targetIds.includes(device.id)}
-                                                        onCheckedChange={(checked) => {
-                                                            const newIds = checked
-                                                                ? [...logic.targetIds, device.id]
-                                                                : logic.targetIds.filter(id => id !== device.id);
-                                                            updateLogic(index, 'targetIds', newIds);
-                                                        }}
-                                                    />
-                                                    <Label htmlFor={`logic-${logic.id}-${device.id}`}>{device.name}</Label>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
+                                )}
+                                <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={() => setIsEditLogicDialogOpen(false)}>Cancel</Button>
+                                    <Button type="button" onClick={saveEditedLogic}>Save changes</Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
                     </TabsContent>
 
                     <div className="mt-6 flex justify-end">
