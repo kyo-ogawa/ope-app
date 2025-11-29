@@ -5,9 +5,10 @@ import { getVersion } from '@tauri-apps/api/app';
 import { ConfigForm } from './components/ConfigForm';
 import { LogViewer } from './components/LogViewer';
 import { Dashboard } from './components/Dashboard';
+import { NetworkScanner } from './components/NetworkScanner';
 import { MonitorConfig, PCStatus, CustomButton, LogEntry } from './types';
 import { Button } from "@/components/ui/button";
-import { Activity, LayoutDashboard, Settings, ScrollText, Play } from "lucide-react";
+import { Activity, LayoutDashboard, Settings, ScrollText, Play, Radar } from "lucide-react";
 
 
 const DEFAULT_CONFIG: MonitorConfig = {
@@ -22,7 +23,7 @@ const DEFAULT_CONFIG: MonitorConfig = {
   webhookUrl: '',
 };
 
-type View = 'dashboard' | 'config' | 'logs';
+type View = 'dashboard' | 'config' | 'logs' | 'scanner';
 
 function App() {
   const [config, setConfig] = useState<MonitorConfig>(DEFAULT_CONFIG);
@@ -150,6 +151,14 @@ return (
           Dashboard
         </Button>
         <Button
+          variant={currentView === 'scanner' ? "secondary" : "ghost"}
+          className="w-full justify-start gap-2"
+          onClick={() => setCurrentView('scanner')}
+        >
+          <Radar className="w-4 h-4" />
+          IP Scanner
+        </Button>
+        <Button
           variant={currentView === 'config' ? "secondary" : "ghost"}
           className="w-full justify-start gap-2"
           onClick={() => setCurrentView('config')}
@@ -198,17 +207,18 @@ return (
       <div className="container mx-auto p-8 max-w-5xl">
         <header className="mb-8">
           <h2 className="text-2xl font-bold tracking-tight capitalize">
-            {currentView === 'config' ? 'Configuration' : currentView === 'logs' ? 'System Logs' : 'Dashboard'}
+            {currentView === 'config' ? 'Configuration' : currentView === 'logs' ? 'System Logs' : currentView === 'scanner' ? 'IP Scanner' : 'Dashboard'}
           </h2>
           <p className="text-muted-foreground">
             {currentView === 'dashboard' && 'Monitor target status and execute custom actions.'}
+            {currentView === 'scanner' && 'Discover devices on the same network segment.'}
             {currentView === 'config' && 'Manage monitoring targets, settings, and logic rules.'}
             {currentView === 'logs' && 'View real-time system logs and OSC messages.'}
           </p>
         </header>
 
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
-          {currentView === 'dashboard' && (
+        <div>
+          <div className={currentView === 'dashboard' ? 'animate-in fade-in slide-in-from-bottom-4 duration-300' : 'hidden'}>
             <Dashboard
               config={config}
               statuses={statuses}
@@ -216,15 +226,20 @@ return (
               buttonLastTriggered={buttonLastTriggered}
               onButtonClick={handleButtonClick}
             />
-          )}
+          </div>
 
-          {currentView === 'config' && (
+          {/* NetworkScanner is always mounted to preserve state */}
+          <div className={currentView === 'scanner' ? 'animate-in fade-in slide-in-from-bottom-4 duration-300' : 'hidden'}>
+            <NetworkScanner />
+          </div>
+
+          <div className={currentView === 'config' ? 'animate-in fade-in slide-in-from-bottom-4 duration-300' : 'hidden'}>
             <ConfigForm initialConfig={config} onSave={handleSaveConfig} />
-          )}
+          </div>
 
-          {currentView === 'logs' && (
+          <div className={currentView === 'logs' ? 'animate-in fade-in slide-in-from-bottom-4 duration-300' : 'hidden'}>
             <LogViewer logs={logs} onClear={() => setLogs([])} />
-          )}
+          </div>
         </div>
       </div>
     </main>

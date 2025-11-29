@@ -88,3 +88,28 @@ export interface LogEntry {
     level: 'info' | 'error' | 'rx' | 'tx';
     message: string;
 }
+
+// Network Scanner types
+export interface ScannedDevice {
+    ip: string;
+    hostname: string | null;
+    isReachable: boolean;
+    responseTimeMs: number | null;
+}
+
+export interface NetworkInterface {
+    name: string;
+    ip: string;
+    subnet: string;
+}
+
+export interface ScanProgress {
+    current: number;
+    total: number;
+    currentIp: string;
+}
+
+export interface ScanResult {
+    devices: ScannedDevice[];
+    scanTimeMs: number;
+}

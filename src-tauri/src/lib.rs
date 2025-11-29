@@ -1,10 +1,12 @@
 mod models;
 mod monitor;
+mod network_scanner;
 mod osc_service;
 
 use local_ip_address::local_ip;
 use models::MonitorConfig;
 use monitor::MonitorService;
+use network_scanner::{cancel_scan, get_network_interfaces, scan_network, NetworkInterface, ScanResult};
 use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, State};
@@ -90,6 +92,28 @@ fn get_config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(config_dir.join("config.json"))
 }
 
+#[tauri::command]
+fn get_interfaces() -> Vec<NetworkInterface> {
+    get_network_interfaces()
+}
+
+#[tauri::command]
+async fn scan_network_range(
+    app: AppHandle,
+    base_ip: String,
+    start: u8,
+    end: u8,
+    timeout_ms: u64,
+) -> ScanResult {
+    // 並列度を150に設定（非同期なので多くても大丈夫）
+    scan_network(app, base_ip, start, end, timeout_ms, 150).await
+}
+
+#[tauri::command]
+fn stop_scan() {
+    cancel_scan();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -107,7 +131,10 @@ pub fn run() {
             load_config,
             send_osc,
             get_local_ip,
-            toggle_periodic_button
+            toggle_periodic_button,
+            get_interfaces,
+            scan_network_range,
+            stop_scan
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
