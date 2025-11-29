@@ -86,3 +86,17 @@ pub struct LogEntry {
     pub level: String, // "info", "error", "rx", "tx"
     pub message: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OscFlowEvent {
+    pub id: String,
+    pub timestamp: u64,
+    pub direction: String, // "tx" | "rx"
+    pub source_ip: String,
+    pub source_port: u16,
+    pub dest_ip: String,
+    pub dest_port: u16,
+    pub address: String,
+    pub args: String,
+}

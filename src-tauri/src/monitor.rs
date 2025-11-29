@@ -1,5 +1,6 @@
-use crate::models::{CustomButton, LogEntry, MonitorConfig, PCStatus};
+use crate::models::{CustomButton, LogEntry, MonitorConfig, OscFlowEvent, PCStatus};
 use crate::osc_service::OscService;
+use local_ip_address::local_ip;
 use rosc::OscType;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,12 +17,17 @@ pub struct MonitorService {
     statuses: Arc<Mutex<HashMap<String, PCStatus>>>,
     app_handle: AppHandle,
     log_tx: Arc<Mutex<Option<mpsc::Sender<LogEntry>>>>,
+    flow_tx: Arc<Mutex<Option<mpsc::Sender<OscFlowEvent>>>>,
+    local_ip: Arc<Mutex<String>>,
     button_last_triggered: Arc<Mutex<HashMap<String, u64>>>,
     button_enabled: Arc<Mutex<HashMap<String, bool>>>,
 }
 
 impl MonitorService {
     pub fn new(app_handle: AppHandle) -> Self {
+        // Get local IP address
+        let local_ip_str = local_ip().map(|ip| ip.to_string()).unwrap_or_else(|_| "127.0.0.1".to_string());
+        
         Self {
             running: Arc::new(AtomicBool::new(false)),
             osc_service: Arc::new(Mutex::new(OscService::new())),
@@ -29,6 +35,8 @@ impl MonitorService {
             statuses: Arc::new(Mutex::new(HashMap::new())),
             app_handle,
             log_tx: Arc::new(Mutex::new(None)),
+            flow_tx: Arc::new(Mutex::new(None)),
+            local_ip: Arc::new(Mutex::new(local_ip_str)),
             button_last_triggered: Arc::new(Mutex::new(HashMap::new())),
             button_enabled: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -64,6 +72,7 @@ impl MonitorService {
         // Start OSC Listener & Logger
         let (tx, mut rx) = mpsc::channel(100);
         let (log_tx, mut log_rx) = mpsc::channel(100);
+        let (flow_tx, mut flow_rx) = mpsc::channel::<OscFlowEvent>(100);
 
         // Spawn Log Emitter
         let app_handle_log = self.app_handle.clone();
@@ -73,15 +82,28 @@ impl MonitorService {
             }
         });
 
-        // Store log_tx
+        // Spawn Flow Event Emitter
+        let app_handle_flow = self.app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            while let Some(event) = flow_rx.recv().await {
+                app_handle_flow.emit("osc-flow", event).ok();
+            }
+        });
+
+        // Store log_tx and flow_tx
         {
             let mut log_tx_guard = self.log_tx.lock().unwrap();
             *log_tx_guard = Some(log_tx.clone());
         }
+        {
+            let mut flow_tx_guard = self.flow_tx.lock().unwrap();
+            *flow_tx_guard = Some(flow_tx.clone());
+        }
 
+        let local_ip_str = self.local_ip.lock().unwrap().clone();
         {
             let mut osc = self.osc_service.lock().unwrap();
-            osc.start_listener(config.local_port, tx, log_tx.clone());
+            osc.start_listener(config.local_port, tx, log_tx.clone(), flow_tx.clone(), local_ip_str.clone());
         }
 
         let running = self.running.clone();
@@ -91,6 +113,8 @@ impl MonitorService {
         let app_handle = self.app_handle.clone();
         let button_last_triggered_arc = self.button_last_triggered.clone();
         let button_enabled_arc = self.button_enabled.clone();
+        let flow_tx_arc = self.flow_tx.clone();
+        let local_ip_arc = self.local_ip.clone();
 
         // Spawn Monitor Loop
         thread::spawn(move || {
@@ -106,6 +130,8 @@ impl MonitorService {
             let statuses_msg = statuses_arc.clone();
             let osc_service_msg = osc_service_arc.clone();
             let app_handle_msg = app_handle.clone();
+            let flow_tx_msg = flow_tx_arc.clone();
+            let local_ip_msg = local_ip_arc.clone();
 
             let log_tx_msg = log_tx.clone();
 
@@ -121,6 +147,8 @@ impl MonitorService {
                             &osc_service_msg,
                             &app_handle_msg,
                             &log_tx_msg,
+                            &flow_tx_msg,
+                            &local_ip_msg,
                         );
                     } else {
                         break;
@@ -134,6 +162,8 @@ impl MonitorService {
             let osc_service_periodic = osc_service_arc.clone();
             let app_handle_periodic = app_handle.clone();
             let log_tx_periodic = log_tx.clone();
+            let flow_tx_periodic = flow_tx_arc.clone();
+            let local_ip_periodic = local_ip_arc.clone();
             let button_last_triggered_periodic = button_last_triggered_arc.clone();
             let button_enabled_periodic = button_enabled_arc.clone();
             thread::spawn(move || {
@@ -182,6 +212,8 @@ impl MonitorService {
                                         if !target_devices.is_empty() {
                                             let osc = osc_service_periodic.lock().unwrap();
                                             let args = convert_osc_args(&btn.args);
+                                            let flow_tx_guard = flow_tx_periodic.lock().unwrap();
+                                            let local_ip = local_ip_periodic.lock().unwrap().clone();
                                             for device in target_devices {
                                                 osc.send(
                                                     &device.ip,
@@ -189,6 +221,8 @@ impl MonitorService {
                                                     &btn.address,
                                                     args.clone(),
                                                     Some(&log_tx_periodic),
+                                                    flow_tx_guard.as_ref(),
+                                                    &local_ip,
                                                 );
                                             }
                                         }
@@ -255,6 +289,8 @@ impl MonitorService {
                 let ping_args_vec = parse_string_args(&ping_args);
                 {
                     let osc = osc_service_arc.lock().unwrap();
+                    let flow_tx_guard = flow_tx_arc.lock().unwrap();
+                    let local_ip = local_ip_arc.lock().unwrap().clone();
                     for device_id in &monitored_ids {
                         if let Some(device) = devices.iter().find(|d| d.id == *device_id) {
                             osc.send(
@@ -263,6 +299,8 @@ impl MonitorService {
                                 &ping_addr,
                                 ping_args_vec.clone(),
                                 Some(&log_tx),
+                                flow_tx_guard.as_ref(),
+                                &local_ip,
                             );
                         }
                     }
@@ -304,6 +342,8 @@ impl MonitorService {
                                         &devices,
                                         &osc_service_arc,
                                         &log_tx,
+                                        &flow_tx_arc,
+                                        &local_ip_arc,
                                     );
                                 }
                             } else {
@@ -328,6 +368,8 @@ impl MonitorService {
                                         &devices,
                                         &osc_service_arc,
                                         &log_tx,
+                                        &flow_tx_arc,
+                                        &local_ip_arc,
                                     );
                                 }
                             }
@@ -362,7 +404,9 @@ impl MonitorService {
         let osc_args = convert_osc_args(&args);
 
         let log_tx_guard = self.log_tx.lock().unwrap();
-        osc.send(ip, port, address, osc_args, log_tx_guard.as_ref());
+        let flow_tx_guard = self.flow_tx.lock().unwrap();
+        let local_ip = self.local_ip.lock().unwrap().clone();
+        osc.send(ip, port, address, osc_args, log_tx_guard.as_ref(), flow_tx_guard.as_ref(), &local_ip);
     }
 
     fn broadcast_status(&self) {
@@ -447,6 +491,8 @@ fn handle_message(
     osc_service: &Arc<Mutex<OscService>>,
     app_handle: &AppHandle,
     log_tx: &mpsc::Sender<LogEntry>,
+    flow_tx: &Arc<Mutex<Option<mpsc::Sender<OscFlowEvent>>>>,
+    local_ip: &Arc<Mutex<String>>,
 ) {
     let (
         pong_addr,
@@ -539,6 +585,8 @@ fn handle_message(
                         &devices,
                         osc_service,
                         log_tx,
+                        flow_tx,
+                        local_ip,
                     );
                 }
             }
@@ -558,6 +606,8 @@ fn evaluate_logics(
     devices: &[crate::models::Device],
     osc_service: &Arc<Mutex<OscService>>,
     log_tx: &mpsc::Sender<LogEntry>,
+    flow_tx: &Arc<Mutex<Option<mpsc::Sender<OscFlowEvent>>>>,
+    local_ip: &Arc<Mutex<String>>,
 ) {
     for logic in logics {
         if !logic.enabled {
@@ -580,6 +630,8 @@ fn evaluate_logics(
             if !target_devices.is_empty() {
                 let osc = osc_service.lock().unwrap();
                 let args = convert_osc_args(&btn.args);
+                let flow_tx_guard = flow_tx.lock().unwrap();
+                let local_ip_str = local_ip.lock().unwrap().clone();
                 for device in target_devices {
                     println!(
                         "Executing Logic: {} -> {} ({})",
@@ -591,6 +643,8 @@ fn evaluate_logics(
                         &btn.address,
                         args.clone(),
                         Some(log_tx),
+                        flow_tx_guard.as_ref(),
+                        &local_ip_str,
                     );
                 }
             }

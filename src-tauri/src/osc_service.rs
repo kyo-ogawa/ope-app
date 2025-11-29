@@ -1,4 +1,4 @@
-use crate::models::LogEntry;
+use crate::models::{LogEntry, OscFlowEvent};
 use rosc::{encoder, OscMessage, OscPacket, OscType};
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
 pub struct OscService {
     running: Arc<AtomicBool>,
@@ -28,7 +29,9 @@ impl OscService {
         &mut self, 
         port: u16, 
         tx: mpsc::Sender<(String, Vec<OscType>, SocketAddr)>,
-        log_tx: mpsc::Sender<LogEntry>
+        log_tx: mpsc::Sender<LogEntry>,
+        flow_tx: mpsc::Sender<OscFlowEvent>,
+        local_ip: String,
     ) {
         self.stop_listener();
         self.running.store(true, Ordering::SeqCst);
@@ -60,7 +63,7 @@ impl OscService {
                         let packet = &buf[..size];
                         match rosc::decoder::decode_udp(packet) {
                             Ok((_, packet)) => {
-                                handle_packet(packet, addr, &tx, &log_tx);
+                                handle_packet(packet, addr, port, &local_ip, &tx, &log_tx, &flow_tx);
                             }
                             Err(e) => {
                                 let _ = log_tx.blocking_send(LogEntry {
@@ -93,7 +96,16 @@ impl OscService {
         self.running.store(false, Ordering::SeqCst);
     }
 
-    pub fn send(&self, ip: &str, port: u16, address: &str, args: Vec<OscType>, log_tx: Option<&mpsc::Sender<LogEntry>>) {
+    pub fn send(
+        &self, 
+        ip: &str, 
+        port: u16, 
+        address: &str, 
+        args: Vec<OscType>, 
+        log_tx: Option<&mpsc::Sender<LogEntry>>,
+        flow_tx: Option<&mpsc::Sender<OscFlowEvent>>,
+        local_ip: &str,
+    ) {
         let addr = format!("{}:{}", ip, port);
         let msg = OscMessage {
             addr: address.to_string(),
@@ -103,6 +115,9 @@ impl OscService {
         
         match encoder::encode(&packet) {
             Ok(buf) => {
+                // Get the local port from sender socket
+                let local_port = self.sender_socket.local_addr().map(|a| a.port()).unwrap_or(0);
+                
                 if let Err(e) = self.sender_socket.send_to(&buf, &addr) {
                     if let Some(tx) = log_tx {
                         let _ = tx.blocking_send(LogEntry {
@@ -113,12 +128,28 @@ impl OscService {
                     }
                     eprintln!("Failed to send OSC to {}: {}", addr, e);
                 } else {
+                    let args_str = args.iter().map(|a| format!("{:?}", a)).collect::<Vec<_>>().join(", ");
+                    
                     if let Some(tx) = log_tx {
-                        let args_str = args.iter().map(|a| format!("{:?}", a)).collect::<Vec<_>>().join(", ");
                         let _ = tx.blocking_send(LogEntry {
                             timestamp: current_timestamp(),
                             level: "tx".to_string(),
                             message: format!("Sent to {}: {} [{}]", addr, address, args_str),
+                        });
+                    }
+                    
+                    // Emit flow event
+                    if let Some(ftx) = flow_tx {
+                        let _ = ftx.blocking_send(OscFlowEvent {
+                            id: Uuid::new_v4().to_string(),
+                            timestamp: current_timestamp(),
+                            direction: "tx".to_string(),
+                            source_ip: local_ip.to_string(),
+                            source_port: local_port,
+                            dest_ip: ip.to_string(),
+                            dest_port: port,
+                            address: address.to_string(),
+                            args: args_str,
                         });
                     }
                 }
@@ -139,9 +170,12 @@ impl OscService {
 
 fn handle_packet(
     packet: OscPacket, 
-    addr: SocketAddr, 
+    addr: SocketAddr,
+    local_port: u16,
+    local_ip: &str,
     tx: &mpsc::Sender<(String, Vec<OscType>, SocketAddr)>,
-    log_tx: &mpsc::Sender<LogEntry>
+    log_tx: &mpsc::Sender<LogEntry>,
+    flow_tx: &mpsc::Sender<OscFlowEvent>,
 ) {
     match packet {
         OscPacket::Message(msg) => {
@@ -153,12 +187,25 @@ fn handle_packet(
                 message: format!("Received from {}: {} [{}]", addr, msg.addr, args_str),
             });
 
+            // Emit flow event
+            let _ = flow_tx.blocking_send(OscFlowEvent {
+                id: Uuid::new_v4().to_string(),
+                timestamp: current_timestamp(),
+                direction: "rx".to_string(),
+                source_ip: addr.ip().to_string(),
+                source_port: addr.port(),
+                dest_ip: local_ip.to_string(),
+                dest_port: local_port,
+                address: msg.addr.clone(),
+                args: args_str,
+            });
+
             // Forward to channel
             let _ = tx.blocking_send((msg.addr, msg.args, addr));
         }
         OscPacket::Bundle(bundle) => {
             for packet in bundle.content {
-                handle_packet(packet, addr, tx, log_tx);
+                handle_packet(packet, addr, local_port, local_ip, tx, log_tx, flow_tx);
             }
         }
     }

@@ -6,9 +6,10 @@ import { ConfigForm } from './components/ConfigForm';
 import { LogViewer } from './components/LogViewer';
 import { Dashboard } from './components/Dashboard';
 import { NetworkScanner } from './components/NetworkScanner';
+import { FlowViewer } from './components/FlowViewer';
 import { MonitorConfig, PCStatus, CustomButton, LogEntry } from './types';
 import { Button } from "@/components/ui/button";
-import { Activity, LayoutDashboard, Settings, ScrollText, Play, Radar } from "lucide-react";
+import { Activity, LayoutDashboard, Settings, ScrollText, Play, Radar, GitBranch } from "lucide-react";
 
 
 const DEFAULT_CONFIG: MonitorConfig = {
@@ -23,7 +24,7 @@ const DEFAULT_CONFIG: MonitorConfig = {
   webhookUrl: '',
 };
 
-type View = 'dashboard' | 'config' | 'logs' | 'scanner';
+type View = 'dashboard' | 'config' | 'logs' | 'scanner' | 'flows';
 
 function App() {
   const [config, setConfig] = useState<MonitorConfig>(DEFAULT_CONFIG);
@@ -159,6 +160,14 @@ return (
           IP Scanner
         </Button>
         <Button
+          variant={currentView === 'flows' ? "secondary" : "ghost"}
+          className="w-full justify-start gap-2"
+          onClick={() => setCurrentView('flows')}
+        >
+          <GitBranch className="w-4 h-4" />
+          Flows
+        </Button>
+        <Button
           variant={currentView === 'config' ? "secondary" : "ghost"}
           className="w-full justify-start gap-2"
           onClick={() => setCurrentView('config')}
@@ -207,11 +216,12 @@ return (
       <div className="container mx-auto p-8 max-w-5xl">
         <header className="mb-8">
           <h2 className="text-2xl font-bold tracking-tight capitalize">
-            {currentView === 'config' ? 'Configuration' : currentView === 'logs' ? 'System Logs' : currentView === 'scanner' ? 'IP Scanner' : 'Dashboard'}
+            {currentView === 'config' ? 'Configuration' : currentView === 'logs' ? 'System Logs' : currentView === 'scanner' ? 'IP Scanner' : currentView === 'flows' ? 'Flows' : 'Dashboard'}
           </h2>
           <p className="text-muted-foreground">
             {currentView === 'dashboard' && 'Monitor target status and execute custom actions.'}
             {currentView === 'scanner' && 'Discover devices on the same network segment.'}
+            {currentView === 'flows' && 'Visualize OSC message flows between devices.'}
             {currentView === 'config' && 'Manage monitoring targets, settings, and logic rules.'}
             {currentView === 'logs' && 'View real-time system logs and OSC messages.'}
           </p>
@@ -231,6 +241,11 @@ return (
           {/* NetworkScanner is always mounted to preserve state */}
           <div className={currentView === 'scanner' ? 'animate-in fade-in slide-in-from-bottom-4 duration-300' : 'hidden'}>
             <NetworkScanner />
+          </div>
+
+          {/* FlowViewer is always mounted to preserve state */}
+          <div className={currentView === 'flows' ? 'animate-in fade-in slide-in-from-bottom-4 duration-300' : 'hidden'}>
+            <FlowViewer config={config} />
           </div>
 
           <div className={currentView === 'config' ? 'animate-in fade-in slide-in-from-bottom-4 duration-300' : 'hidden'}>

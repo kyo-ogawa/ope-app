@@ -113,3 +113,21 @@ export interface ScanResult {
     devices: ScannedDevice[];
     scanTimeMs: number;
 }
+
+// OSC Flow visualization types
+export type OscFlowDirection = 'tx' | 'rx';
+
+export interface OscFlowEvent {
+    id: string;
+    timestamp: number;
+    direction: OscFlowDirection;
+    sourceIp: string;
+    sourcePort: number;
+    destIp: string;
+    destPort: number;
+    address: string;
+    args: string;
+    // Optional: デバイス名（設定から解決）
+    sourceName?: string;
+    destName?: string;
+}
