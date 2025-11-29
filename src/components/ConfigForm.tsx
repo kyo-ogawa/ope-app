@@ -917,8 +917,18 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                         </Dialog>
                     </TabsContent>
 
-                    <div className="mt-6 flex justify-end">
-                        <Button type="submit" size="lg" className="gap-2">
+                    <div className="mt-6 flex flex-col items-end gap-2">
+                        {config.interval >= config.timeout && (
+                            <p className="text-sm text-destructive font-medium">
+                                Interval must be less than Timeout (Interval &lt; Timeout)
+                            </p>
+                        )}
+                        <Button 
+                            type="submit" 
+                            size="lg" 
+                            className="gap-2"
+                            disabled={config.interval >= config.timeout}
+                        >
                             <Save className="w-4 h-4" /> Save & Start Monitoring
                         </Button>
                     </div>
