@@ -13,7 +13,7 @@ export interface PCConfig {
     name: string;
 }
 
-export type ButtonMode = 'momentary' | 'toggle';
+export type ButtonMode = 'momentary' | 'toggle' | 'periodic';
 
 export interface OscArg {
     value: string;
@@ -36,6 +36,9 @@ export interface CustomButton {
     // Toggle OFF
     addressOff?: string;
     argsOff?: OscArg[];
+
+    // Periodic
+    periodicInterval?: number; // ms
 }
 
 export interface LogicRule {

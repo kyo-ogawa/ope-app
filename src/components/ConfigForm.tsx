@@ -70,12 +70,14 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
     const saveEditedDevice = () => {
         if (!editingDevice) return;
 
-        setConfig(prev => {
-            const newDevices = prev.devices.map(d =>
+        const newConfig = {
+            ...config,
+            devices: config.devices.map(d =>
                 d.id === editingDevice.id ? editingDevice : d
-            );
-            return { ...prev, devices: newDevices };
-        });
+            )
+        };
+        setConfig(newConfig);
+        onSave(newConfig);
         setIsEditDialogOpen(false);
         setEditingDevice(null);
     };
@@ -119,12 +121,14 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
     const saveEditedButton = () => {
         if (!editingButton) return;
 
-        setConfig(prev => {
-            const newButtons = (prev.customButtons || []).map(b =>
+        const newConfig = {
+            ...config,
+            customButtons: (config.customButtons || []).map(b =>
                 b.id === editingButton.id ? editingButton : b
-            );
-            return { ...prev, customButtons: newButtons };
-        });
+            )
+        };
+        setConfig(newConfig);
+        onSave(newConfig);
         setIsEditButtonDialogOpen(false);
         setEditingButton(null);
     };
@@ -160,17 +164,15 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
 
     const saveEditedLogic = () => {
         if (!editingLogic) return;
-        setConfig(prev => {
-            const newLogics = [...(prev.logics || [])];
-            const index = newLogics.findIndex(l => l.id === editingLogic.id);
-            if (index !== -1) {
-                newLogics[index] = editingLogic;
-            } else {
-                // If it's a new logic not in the list yet (though we add it first usually)
-                // But here we edit existing ones.
-            }
-            return { ...prev, logics: newLogics };
-        });
+
+        const newLogics = [...(config.logics || [])];
+        const index = newLogics.findIndex(l => l.id === editingLogic.id);
+        if (index !== -1) {
+            newLogics[index] = editingLogic;
+        }
+        const newConfig = { ...config, logics: newLogics };
+        setConfig(newConfig);
+        onSave(newConfig);
         setIsEditLogicDialogOpen(false);
     };
 
@@ -580,7 +582,7 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                                 <Label>Mode</Label>
                                                 <Select
                                                     value={editingButton.mode}
-                                                    onValueChange={(val) => setEditingButton({ ...editingButton, mode: val as 'momentary' | 'toggle' })}
+                                                    onValueChange={(val) => setEditingButton({ ...editingButton, mode: val as 'momentary' | 'toggle' | 'periodic' })}
                                                 >
                                                     <SelectTrigger>
                                                         <SelectValue />
@@ -588,6 +590,7 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                                     <SelectContent>
                                                         <SelectItem value="momentary">Momentary (One-shot)</SelectItem>
                                                         <SelectItem value="toggle">Toggle (ON/OFF)</SelectItem>
+                                                        <SelectItem value="periodic">Periodic (Interval)</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -697,6 +700,20 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                                 </div>
                                             </div>
                                         </div>
+                                        {editingButton.mode === 'periodic' && (
+                                            <div className="space-y-2">
+                                                <Label>Interval (ms)</Label>
+                                                <Input
+                                                    type="number"
+                                                    value={editingButton.periodicInterval ?? ''}
+                                                    onChange={e => {
+                                                        const val = parseInt(e.target.value);
+                                                        setEditingButton({ ...editingButton, periodicInterval: isNaN(val) ? undefined : val });
+                                                    }}
+                                                    placeholder="1000"
+                                                />
+                                            </div>
+                                        )}
                                         {editingButton.mode === 'toggle' && (
                                             <div className="grid grid-cols-1 gap-4 pt-2 bg-muted/30 p-2 rounded">
                                                 <div className="space-y-2">
@@ -923,9 +940,9 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                 Interval must be less than Timeout (Interval &lt; Timeout)
                             </p>
                         )}
-                        <Button 
-                            type="submit" 
-                            size="lg" 
+                        <Button
+                            type="submit"
+                            size="lg"
                             className="gap-2"
                             disabled={config.interval >= config.timeout}
                         >

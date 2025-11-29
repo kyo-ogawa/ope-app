@@ -1,20 +1,87 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { MonitorConfig, PCStatus, CustomButton } from '../types';
 import { StatusCard } from './StatusCard';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Zap, Power, Play, Monitor } from "lucide-react";
+import { Zap, Power, Play, Pause, Monitor, Timer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface DashboardProps {
     config: MonitorConfig;
     statuses: Record<string, PCStatus>;
     buttonStates: Record<string, boolean>;
+    buttonLastTriggered: Record<string, number>;
     onButtonClick: (btn: CustomButton) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonStates, onButtonClick }) => {
+const PeriodicButtonProgress: React.FC<{ interval: number; lastTriggered: number }> = ({ interval, lastTriggered }) => {
+    const [progress, setProgress] = useState(0);
+    const [remaining, setRemaining] = useState(0);
+
+    useEffect(() => {
+        // Use lastTriggered from backend, or current time for initial display
+        const effectiveTime = lastTriggered > 0 ? lastTriggered : Date.now();
+
+        // console.log('🔄 PeriodicButtonProgress RESET:', { 
+        //     interval: interval + 'ms', 
+        //     lastTriggered: effectiveTime, 
+        //     time: new Date(effectiveTime).toLocaleTimeString(),
+        //     isInitial: lastTriggered === 0
+        // });
+
+        if (interval <= 0) {
+            setProgress(0);
+            setRemaining(0);
+            return;
+        }
+
+        let animationId: number;
+        let lastLoggedProgress = -1;
+        const update = () => {
+            const now = Date.now();
+            const elapsed = now - effectiveTime;
+            const p = Math.min(100, (elapsed / interval) * 100);
+            const remainingSec = Math.max(0, Math.ceil((interval - elapsed) / 1000));
+
+            // Log only when progress changes significantly
+            const currentProgress = Math.floor(p / 10) * 10;
+            if (currentProgress !== lastLoggedProgress) {
+                console.log('Progress:', {
+                    progress: Math.floor(p) + '%',
+                    barWidth: (100 - p) + '%',
+                    remaining: remainingSec + 's'
+                });
+                lastLoggedProgress = currentProgress;
+            }
+
+            setProgress(p);
+            setRemaining(remainingSec);
+
+            // Continue animation loop
+            animationId = requestAnimationFrame(update);
+        };
+
+        animationId = requestAnimationFrame(update);
+        return () => cancelAnimationFrame(animationId);
+    }, [lastTriggered, interval]);
+
+    return (
+        <>
+            <div className="absolute bottom-0 left-0 h-3 bg-gray-200 dark:bg-gray-700 w-full overflow-hidden rounded-b-lg">
+                <div
+                    className="h-full bg-blue-500"
+                    style={{ width: `${100 - progress}%` }}
+                />
+            </div>
+            <div className="absolute bottom-4 right-2 text-xs text-foreground font-mono bg-background/90 px-2 py-0.5 rounded shadow-md border">
+                {remaining}s
+            </div>
+        </>
+    );
+};
+
+export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonStates, buttonLastTriggered, onButtonClick }) => {
     return (
         <div className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -53,13 +120,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonSt
                         Custom Actions
                     </h3>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                            {config.customButtons.map(btn => {
+                        {config.customButtons.map(btn => {
                             const isToggle = btn.mode === 'toggle';
+                            const isPeriodic = btn.mode === 'periodic';
                             const isOn = buttonStates[btn.id] || false;
                             const targetDevices = config.devices.filter(d => btn.deviceIds.includes(d.id));
 
                             return (
-                                <Card key={btn.id} className="flex flex-col justify-between overflow-hidden">
+                                <Card key={btn.id} className="flex flex-col justify-between overflow-hidden relative">
                                     <CardHeader className="p-4 pb-2">
                                         <CardTitle className="text-base truncate" title={btn.label}>{btn.label}</CardTitle>
                                         {btn.description && (
@@ -81,14 +149,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonSt
                                     <CardContent className="p-4 pt-2">
                                         <Button
                                             onClick={() => onButtonClick(btn)}
-                                            variant={isToggle ? (isOn ? "default" : "outline") : "secondary"}
+                                            variant={(isToggle || isPeriodic) ? (isOn ? "default" : "outline") : "secondary"}
                                             className={cn(
                                                 "w-full font-semibold transition-all gap-2",
-                                                isToggle && isOn && "bg-green-600 hover:bg-green-700 text-white",
-                                                !isToggle && isOn && "bg-primary/90 text-primary-foreground scale-95"
+                                                (isToggle || isPeriodic) && isOn && "bg-green-600 hover:bg-green-700 text-white",
+                                                !(isToggle || isPeriodic) && isOn && "bg-primary/90 text-primary-foreground scale-95"
                                             )}
                                         >
-                                            {isToggle ? (
+                                            {isPeriodic ? (
+                                                <>
+                                                    {isOn ? <Pause className="w-4 h-4" /> : <Timer className="w-4 h-4" />}
+                                                    {isOn ? 'Stop' : 'Start'}
+                                                </>
+                                            ) : isToggle ? (
                                                 <>
                                                     <Power className="w-4 h-4" />
                                                     {isOn ? 'ON' : 'OFF'}
@@ -101,6 +174,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonSt
                                             )}
                                         </Button>
                                     </CardContent>
+                                    {isPeriodic && isOn && (btn.periodicInterval || 0) > 0 && (
+                                        <PeriodicButtonProgress
+                                            interval={btn.periodicInterval!}
+                                            lastTriggered={buttonLastTriggered[btn.id] || 0}
+                                        />
+                                    )}
                                 </Card>
                             )
                         })}

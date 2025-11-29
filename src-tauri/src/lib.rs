@@ -35,6 +35,11 @@ fn send_osc(
 }
 
 #[tauri::command]
+fn toggle_periodic_button(state: State<'_, AppState>, button_id: String) -> bool {
+    state.monitor_service.toggle_periodic_button(button_id)
+}
+
+#[tauri::command]
 fn save_config(app: AppHandle, config: MonitorConfig) -> Result<(), String> {
     let config_path = get_config_path(&app)?;
     let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
@@ -101,7 +106,8 @@ pub fn run() {
             save_config,
             load_config,
             send_osc,
-            get_local_ip
+            get_local_ip,
+            toggle_periodic_button
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

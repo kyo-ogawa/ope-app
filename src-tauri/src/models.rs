@@ -34,6 +34,8 @@ pub struct CustomButton {
 
     pub address_off: Option<String>,
     pub args_off: Option<Vec<OscArg>>,
+
+    pub periodic_interval: Option<u64>, // ms
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

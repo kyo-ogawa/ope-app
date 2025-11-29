@@ -16,6 +16,8 @@ pub struct MonitorService {
     statuses: Arc<Mutex<HashMap<String, PCStatus>>>,
     app_handle: AppHandle,
     log_tx: Arc<Mutex<Option<mpsc::Sender<LogEntry>>>>,
+    button_last_triggered: Arc<Mutex<HashMap<String, u64>>>,
+    button_enabled: Arc<Mutex<HashMap<String, bool>>>,
 }
 
 impl MonitorService {
@@ -27,6 +29,8 @@ impl MonitorService {
             statuses: Arc::new(Mutex::new(HashMap::new())),
             app_handle,
             log_tx: Arc::new(Mutex::new(None)),
+            button_last_triggered: Arc::new(Mutex::new(HashMap::new())),
+            button_enabled: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -85,6 +89,8 @@ impl MonitorService {
         let statuses_arc = self.statuses.clone();
         let osc_service_arc = self.osc_service.clone();
         let app_handle = self.app_handle.clone();
+        let button_last_triggered_arc = self.button_last_triggered.clone();
+        let button_enabled_arc = self.button_enabled.clone();
 
         // Spawn Monitor Loop
         thread::spawn(move || {
@@ -119,6 +125,91 @@ impl MonitorService {
                     } else {
                         break;
                     }
+                }
+            });
+
+            // Periodic Button Loop
+            let running_periodic = running.clone();
+            let config_periodic = config_arc.clone();
+            let osc_service_periodic = osc_service_arc.clone();
+            let app_handle_periodic = app_handle.clone();
+            let log_tx_periodic = log_tx.clone();
+            let button_last_triggered_periodic = button_last_triggered_arc.clone();
+            let button_enabled_periodic = button_enabled_arc.clone();
+            thread::spawn(move || {
+                while running_periodic.load(Ordering::SeqCst) {
+                    let now = current_time_ms();
+                    let (buttons, devices) = {
+                        let cfg_guard = config_periodic.lock().unwrap();
+                        if let Some(cfg) = &*cfg_guard {
+                            (
+                                cfg.custom_buttons.clone().unwrap_or_default(),
+                                cfg.devices.clone(),
+                            )
+                        } else {
+                            (vec![], vec![])
+                        }
+                    };
+
+                    for btn in buttons {
+                        if btn.mode == "periodic" {
+                            if let Some(interval) = btn.periodic_interval {
+                                if interval > 0 {
+                                    let mut last_triggered =
+                                        button_last_triggered_periodic.lock().unwrap();
+                                    let last = *last_triggered.get(&btn.id).unwrap_or(&0);
+
+                                    if now - last >= interval {
+                                        // Check if button is enabled
+                                        let enabled_map = button_enabled_periodic.lock().unwrap();
+                                        let is_enabled =
+                                            *enabled_map.get(&btn.id).unwrap_or(&false);
+                                        drop(enabled_map);
+
+                                        if !is_enabled {
+                                            continue;
+                                        }
+
+                                        // Trigger
+                                        // println!("Periodic trigger for button: {}", btn.label);
+                                        last_triggered.insert(btn.id.clone(), now);
+
+                                        // Send OSC
+                                        let target_devices: Vec<_> = devices
+                                            .iter()
+                                            .filter(|d| btn.device_ids.contains(&d.id))
+                                            .collect();
+                                        if !target_devices.is_empty() {
+                                            let osc = osc_service_periodic.lock().unwrap();
+                                            let args = convert_osc_args(&btn.args);
+                                            for device in target_devices {
+                                                osc.send(
+                                                    &device.ip,
+                                                    device.port,
+                                                    &btn.address,
+                                                    args.clone(),
+                                                    Some(&log_tx_periodic),
+                                                );
+                                            }
+                                        }
+
+                                        // Emit event
+                                        app_handle_periodic
+                                            .emit(
+                                                "button-trigger",
+                                                serde_json::json!({
+                                                    "buttonId": btn.id,
+                                                    "timestamp": now
+                                                }),
+                                            )
+                                            .ok();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    thread::sleep(Duration::from_millis(100));
                 }
             });
 
@@ -276,6 +367,14 @@ impl MonitorService {
 
     fn broadcast_status(&self) {
         broadcast_status(&self.app_handle, &self.statuses);
+    }
+
+    pub fn toggle_periodic_button(&self, button_id: String) -> bool {
+        let mut enabled_map = self.button_enabled.lock().unwrap();
+        let current = *enabled_map.get(&button_id).unwrap_or(&false);
+        let new_state = !current;
+        enabled_map.insert(button_id, new_state);
+        new_state
     }
 }
 
@@ -474,7 +573,10 @@ fn evaluate_logics(
         // Execute Action
         if let Some(btn) = buttons.iter().find(|b| b.id == logic.action_button_id) {
             // Resolve target devices (複数デバイス対応)
-            let target_devices: Vec<_> = devices.iter().filter(|d| btn.device_ids.contains(&d.id)).collect();
+            let target_devices: Vec<_> = devices
+                .iter()
+                .filter(|d| btn.device_ids.contains(&d.id))
+                .collect();
             if !target_devices.is_empty() {
                 let osc = osc_service.lock().unwrap();
                 let args = convert_osc_args(&btn.args);
@@ -483,7 +585,13 @@ fn evaluate_logics(
                         "Executing Logic: {} -> {} ({})",
                         logic.name, btn.label, device.name
                     );
-                    osc.send(&device.ip, device.port, &btn.address, args.clone(), Some(log_tx));
+                    osc.send(
+                        &device.ip,
+                        device.port,
+                        &btn.address,
+                        args.clone(),
+                        Some(log_tx),
+                    );
                 }
             }
         }
