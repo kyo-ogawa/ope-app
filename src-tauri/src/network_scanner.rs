@@ -85,8 +85,6 @@ pub fn get_network_interfaces() -> Vec<NetworkInterface> {
 async fn ping_host(ip: &Ipv4Addr, timeout_ms: u64) -> (bool, Option<u64>) {
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        
         // CREATE_NO_WINDOW flag to prevent console window from appearing
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         
