@@ -83,44 +83,68 @@ pub fn get_network_interfaces() -> Vec<NetworkInterface> {
 
 /// Ping a single IP address using system ping command (async)
 async fn ping_host(ip: &Ipv4Addr, timeout_ms: u64) -> (bool, Option<u64>) {
-    let timeout_sec = (timeout_ms as f64 / 1000.0).max(1.0);
-
     #[cfg(target_os = "windows")]
-    let output = Command::new("ping")
-        .args(["-n", "1", "-w", &(timeout_ms as u64).to_string(), &ip.to_string()])
-        .output()
-        .await;
+    {
+        use std::os::windows::process::CommandExt;
+        
+        // CREATE_NO_WINDOW flag to prevent console window from appearing
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
+        let output = Command::new("ping")
+            .args(["-n", "1", "-w", &timeout_ms.to_string(), &ip.to_string()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .await;
+
+        match output {
+            Ok(output) => {
+                let success = output.status.success();
+                let response_time = if success {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    parse_ping_time_windows(&stdout)
+                } else {
+                    None
+                };
+                (success, response_time)
+            }
+            Err(_) => (false, None),
+        }
+    }
 
     #[cfg(not(target_os = "windows"))]
-    let output = Command::new("ping")
-        .args([
-            "-c",
-            "1",
-            "-W",
-            &format!("{:.0}", timeout_sec),
-            &ip.to_string(),
-        ])
-        .output()
-        .await;
+    {
+        let timeout_sec = (timeout_ms as f64 / 1000.0).max(1.0);
+        
+        let output = Command::new("ping")
+            .args([
+                "-c",
+                "1",
+                "-W",
+                &format!("{:.0}", timeout_sec),
+                &ip.to_string(),
+            ])
+            .output()
+            .await;
 
-    match output {
-        Ok(output) => {
-            let success = output.status.success();
-            let response_time = if success {
-                // Try to parse response time from output
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                parse_ping_time(&stdout)
-            } else {
-                None
-            };
-            (success, response_time)
+        match output {
+            Ok(output) => {
+                let success = output.status.success();
+                let response_time = if success {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    parse_ping_time_unix(&stdout)
+                } else {
+                    None
+                };
+                (success, response_time)
+            }
+            Err(_) => (false, None),
         }
-        Err(_) => (false, None),
     }
 }
 
-/// Parse ping response time from output
-fn parse_ping_time(output: &str) -> Option<u64> {
+/// Parse ping response time from Unix output (macOS/Linux)
+#[cfg(not(target_os = "windows"))]
+fn parse_ping_time_unix(output: &str) -> Option<u64> {
     // macOS/Linux format: "time=X.XXX ms" or "time=X ms"
     if let Some(time_idx) = output.find("time=") {
         let after_time = &output[time_idx + 5..];
@@ -131,6 +155,45 @@ fn parse_ping_time(output: &str) -> Option<u64> {
             }
         }
     }
+    None
+}
+
+/// Parse ping response time from Windows output
+#[cfg(target_os = "windows")]
+fn parse_ping_time_windows(output: &str) -> Option<u64> {
+    // Windows English format: "time=XXms" or "time<1ms"
+    // Windows Japanese format: "時間 =XXms" or "時間 <1ms"
+    
+    // Try English format first
+    if let Some(time_idx) = output.find("time=") {
+        let after_time = &output[time_idx + 5..];
+        if let Some(ms_idx) = after_time.find("ms") {
+            let time_str = after_time[..ms_idx].trim();
+            if let Ok(time) = time_str.parse::<u64>() {
+                return Some(time);
+            }
+        }
+    }
+    
+    // Try "time<1ms" format (very fast response)
+    if output.contains("time<1ms") || output.contains("時間 <1ms") {
+        return Some(0);
+    }
+    
+    // Try Japanese format: "時間 =XXms"
+    if let Some(time_idx) = output.find("時間") {
+        let after_time = &output[time_idx..];
+        if let Some(eq_idx) = after_time.find('=') {
+            let after_eq = &after_time[eq_idx + 1..];
+            if let Some(ms_idx) = after_eq.find("ms") {
+                let time_str = after_eq[..ms_idx].trim();
+                if let Ok(time) = time_str.parse::<u64>() {
+                    return Some(time);
+                }
+            }
+        }
+    }
+    
     None
 }
 
