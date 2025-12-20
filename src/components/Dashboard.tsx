@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { MonitorConfig, PCStatus, CustomButton } from '../types';
 import { StatusCard } from './StatusCard';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import { Zap, Power, Play, Pause, Monitor, Timer } from "lucide-react";
+import { Zap, Power, Play, Pause, Monitor, Timer, Sliders } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface DashboardProps {
@@ -13,6 +15,7 @@ interface DashboardProps {
     buttonStates: Record<string, boolean>;
     buttonLastTriggered: Record<string, number>;
     onButtonClick: (btn: CustomButton) => void;
+    onValueChange?: (btn: CustomButton, value: number) => void;
 }
 
 const PeriodicButtonProgress: React.FC<{ interval: number; lastTriggered: number }> = ({ interval, lastTriggered }) => {
@@ -81,7 +84,101 @@ const PeriodicButtonProgress: React.FC<{ interval: number; lastTriggered: number
     );
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonStates, buttonLastTriggered, onButtonClick }) => {
+interface ValueButtonControlProps {
+    btn: CustomButton;
+    onValueChange: (value: number) => void;
+}
+
+const ValueButtonControl: React.FC<ValueButtonControlProps> = ({ btn, onValueChange }) => {
+    const hasRange = btn.valueMin !== undefined && btn.valueMax !== undefined;
+    const min = btn.valueMin ?? 0;
+    const max = btn.valueMax ?? 100;
+    const step = btn.valueStep ?? (btn.valueType === 'int' ? 1 : 0.1);
+    const defaultValue = btn.valueDefault ?? min;
+    
+    const [inputValue, setInputValue] = useState<string>(String(defaultValue));
+    const [sliderValue, setSliderValue] = useState<number>(defaultValue);
+    const debounceRef = useRef<NodeJS.Timeout | null>(null);
+    
+    // テキスト入力時のデバウンス送信
+    const debouncedSend = useCallback((value: number) => {
+        if (debounceRef.current) {
+            clearTimeout(debounceRef.current);
+        }
+        debounceRef.current = setTimeout(() => {
+            onValueChange(value);
+        }, 300);
+    }, [onValueChange]);
+    
+    // テキスト入力の変更ハンドラ
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const text = e.target.value;
+        setInputValue(text);
+        
+        const parsed = btn.valueType === 'int' ? parseInt(text) : parseFloat(text);
+        if (!isNaN(parsed)) {
+            setSliderValue(Math.max(min, Math.min(max, parsed)));
+            debouncedSend(parsed);
+        }
+    };
+    
+    // スライダーの変更ハンドラ（リアルタイム送信）
+    const handleSliderChange = (values: number[]) => {
+        const value = values[0];
+        const displayValue = btn.valueType === 'int' ? Math.round(value) : value;
+        setSliderValue(displayValue);
+        setInputValue(String(displayValue));
+        onValueChange(displayValue);
+    };
+    
+    // Enterキーで即時送信
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            if (debounceRef.current) {
+                clearTimeout(debounceRef.current);
+            }
+            const parsed = btn.valueType === 'int' ? parseInt(inputValue) : parseFloat(inputValue);
+            if (!isNaN(parsed)) {
+                onValueChange(parsed);
+            }
+        }
+    };
+
+    return (
+        <div className="space-y-3">
+            <div className="flex items-center gap-2">
+                <Input
+                    type="number"
+                    value={inputValue}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    step={step}
+                    min={hasRange ? min : undefined}
+                    max={hasRange ? max : undefined}
+                    className="font-mono text-center"
+                />
+            </div>
+            {hasRange && (
+                <div className="space-y-1">
+                    <Slider
+                        value={[sliderValue]}
+                        onValueChange={handleSliderChange}
+                        min={min}
+                        max={max}
+                        step={step}
+                        className="w-full"
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground font-mono">
+                        <span>{min}</span>
+                        <span>{max}</span>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonStates, buttonLastTriggered, onButtonClick, onValueChange }) => {
     return (
         <div className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -123,13 +220,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonSt
                         {config.customButtons.map(btn => {
                             const isToggle = btn.mode === 'toggle';
                             const isPeriodic = btn.mode === 'periodic';
+                            const isValue = btn.mode === 'value';
                             const isOn = buttonStates[btn.id] || false;
                             const targetDevices = config.devices.filter(d => btn.deviceIds.includes(d.id));
 
                             return (
                                 <Card key={btn.id} className="flex flex-col justify-between overflow-hidden relative">
                                     <CardHeader className="p-4 pb-2">
-                                        <CardTitle className="text-base truncate" title={btn.label}>{btn.label}</CardTitle>
+                                        <CardTitle className="text-base truncate flex items-center gap-2" title={btn.label}>
+                                            {isValue && <Sliders className="w-4 h-4 text-muted-foreground" />}
+                                            {btn.label}
+                                        </CardTitle>
                                         {btn.description && (
                                             <CardDescription className="text-xs line-clamp-2" title={btn.description}>
                                                 {btn.description}
@@ -147,32 +248,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonSt
                                         )}
                                     </CardHeader>
                                     <CardContent className="p-4 pt-2">
-                                        <Button
-                                            onClick={() => onButtonClick(btn)}
-                                            variant={(isToggle || isPeriodic) ? (isOn ? "default" : "outline") : "secondary"}
-                                            className={cn(
-                                                "w-full font-semibold transition-all gap-2",
-                                                (isToggle || isPeriodic) && isOn && "bg-green-600 hover:bg-green-700 text-white",
-                                                !(isToggle || isPeriodic) && isOn && "bg-primary/90 text-primary-foreground scale-95"
-                                            )}
-                                        >
-                                            {isPeriodic ? (
-                                                <>
-                                                    {isOn ? <Pause className="w-4 h-4" /> : <Timer className="w-4 h-4" />}
-                                                    {isOn ? 'Stop' : 'Start'}
-                                                </>
-                                            ) : isToggle ? (
-                                                <>
-                                                    <Power className="w-4 h-4" />
-                                                    {isOn ? 'ON' : 'OFF'}
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Play className="w-4 h-4" />
-                                                    Run
-                                                </>
-                                            )}
-                                        </Button>
+                                        {isValue ? (
+                                            <ValueButtonControl
+                                                btn={btn}
+                                                onValueChange={(value) => onValueChange?.(btn, value)}
+                                            />
+                                        ) : (
+                                            <Button
+                                                onClick={() => onButtonClick(btn)}
+                                                variant={(isToggle || isPeriodic) ? (isOn ? "default" : "outline") : "secondary"}
+                                                className={cn(
+                                                    "w-full font-semibold transition-all gap-2",
+                                                    (isToggle || isPeriodic) && isOn && "bg-green-600 hover:bg-green-700 text-white",
+                                                    !(isToggle || isPeriodic) && isOn && "bg-primary/90 text-primary-foreground scale-95"
+                                                )}
+                                            >
+                                                {isPeriodic ? (
+                                                    <>
+                                                        {isOn ? <Pause className="w-4 h-4" /> : <Timer className="w-4 h-4" />}
+                                                        {isOn ? 'Stop' : 'Start'}
+                                                    </>
+                                                ) : isToggle ? (
+                                                    <>
+                                                        <Power className="w-4 h-4" />
+                                                        {isOn ? 'ON' : 'OFF'}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Play className="w-4 h-4" />
+                                                        Run
+                                                    </>
+                                                )}
+                                            </Button>
+                                        )}
                                     </CardContent>
                                     {isPeriodic && isOn && (btn.periodicInterval || 0) > 0 && (
                                         <PeriodicButtonProgress

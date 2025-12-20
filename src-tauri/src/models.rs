@@ -25,7 +25,7 @@ pub struct CustomButton {
     pub id: String,
     pub label: String,
     pub description: Option<String>,
-    pub mode: String, // "momentary" | "toggle"
+    pub mode: String, // "momentary" | "toggle" | "periodic" | "value"
 
     pub device_ids: Vec<String>, // 複数デバイスに送信可能
 
@@ -36,6 +36,13 @@ pub struct CustomButton {
     pub args_off: Option<Vec<OscArg>>,
 
     pub periodic_interval: Option<u64>, // ms
+
+    // Value mode fields
+    pub value_type: Option<String>,  // "int" | "float"
+    pub value_min: Option<f64>,
+    pub value_max: Option<f64>,
+    pub value_default: Option<f64>,
+    pub value_step: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

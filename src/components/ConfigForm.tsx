@@ -591,6 +591,7 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                                         <SelectItem value="momentary">Momentary (One-shot)</SelectItem>
                                                         <SelectItem value="toggle">Toggle (ON/OFF)</SelectItem>
                                                         <SelectItem value="periodic">Periodic (Interval)</SelectItem>
+                                                        <SelectItem value="value">Value (Int/Float)</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -712,6 +713,80 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                                     }}
                                                     placeholder="1000"
                                                 />
+                                            </div>
+                                        )}
+                                        {editingButton.mode === 'value' && (
+                                            <div className="grid grid-cols-1 gap-4 pt-2 bg-muted/30 p-3 rounded">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-2">
+                                                        <Label>Value Type</Label>
+                                                        <Select
+                                                            value={editingButton.valueType || 'int'}
+                                                            onValueChange={(val) => setEditingButton({ ...editingButton, valueType: val as 'int' | 'float' })}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="int">Integer</SelectItem>
+                                                                <SelectItem value="float">Float</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Default Value</Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={editingButton.valueDefault ?? ''}
+                                                            onChange={e => {
+                                                                const val = parseFloat(e.target.value);
+                                                                setEditingButton({ ...editingButton, valueDefault: isNaN(val) ? undefined : val });
+                                                            }}
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-4">
+                                                    <div className="space-y-2">
+                                                        <Label>Min (スライダー用、任意)</Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={editingButton.valueMin ?? ''}
+                                                            onChange={e => {
+                                                                const val = parseFloat(e.target.value);
+                                                                setEditingButton({ ...editingButton, valueMin: isNaN(val) ? undefined : val });
+                                                            }}
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Max (スライダー用、任意)</Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={editingButton.valueMax ?? ''}
+                                                            onChange={e => {
+                                                                const val = parseFloat(e.target.value);
+                                                                setEditingButton({ ...editingButton, valueMax: isNaN(val) ? undefined : val });
+                                                            }}
+                                                            placeholder="100"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Step</Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={editingButton.valueStep ?? ''}
+                                                            onChange={e => {
+                                                                const val = parseFloat(e.target.value);
+                                                                setEditingButton({ ...editingButton, valueStep: isNaN(val) ? undefined : val });
+                                                            }}
+                                                            placeholder={editingButton.valueType === 'float' ? '0.1' : '1'}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground">
+                                                    ※ MinとMaxを両方設定するとスライダーが表示されます。設定しない場合はテキスト入力のみになります。
+                                                </p>
                                             </div>
                                         )}
                                         {editingButton.mode === 'toggle' && (

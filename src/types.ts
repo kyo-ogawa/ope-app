@@ -13,7 +13,7 @@ export interface PCConfig {
     name: string;
 }
 
-export type ButtonMode = 'momentary' | 'toggle' | 'periodic';
+export type ButtonMode = 'momentary' | 'toggle' | 'periodic' | 'value';
 
 export interface OscArg {
     value: string;
@@ -39,6 +39,13 @@ export interface CustomButton {
 
     // Periodic
     periodicInterval?: number; // ms
+
+    // Value mode
+    valueType?: 'int' | 'float';
+    valueMin?: number;
+    valueMax?: number;
+    valueDefault?: number;
+    valueStep?: number; // スライダーのステップ値
 }
 
 export interface LogicRule {

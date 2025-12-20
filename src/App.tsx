@@ -131,6 +131,27 @@ function App() {
     }
   };
 
+  // Value mode handler
+  const handleValueChange = (btn: CustomButton, value: number) => {
+    const targetDevices = config.devices.filter(d => btn.deviceIds.includes(d.id));
+    
+    // 値の型に応じてOscArgを作成
+    const valueArg = {
+      value: String(value),
+      argType: btn.valueType || 'int'
+    };
+    
+    // 各デバイスにOSCを送信
+    for (const targetDevice of targetDevices) {
+      invoke('send_osc', {
+        ip: targetDevice.ip,
+        port: targetDevice.port,
+        address: btn.address,
+        args: [valueArg]
+      });
+    }
+  };
+
 return (
   <div className="flex h-screen bg-background text-foreground overflow-hidden">
     {/* Sidebar Navigation */}
@@ -235,6 +256,7 @@ return (
               buttonStates={buttonStates}
               buttonLastTriggered={buttonLastTriggered}
               onButtonClick={handleButtonClick}
+              onValueChange={handleValueChange}
             />
           </div>
 
