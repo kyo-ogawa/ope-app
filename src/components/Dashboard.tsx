@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { MonitorConfig, PCStatus, CustomButton, MonitorValue, CustomMonitor } from '../types';
+import { MonitorConfig, PCStatus, CustomButton, MonitorValue } from '../types';
 import { StatusCard } from './StatusCard';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";

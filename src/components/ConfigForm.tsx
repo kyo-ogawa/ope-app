@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { MonitorConfig, Device, CustomButton, LogicRule, CustomMonitor, MonitorArgDefinition } from '../types';
+import { MonitorConfig, Device, CustomButton, LogicRule, CustomMonitor } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";

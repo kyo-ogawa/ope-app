@@ -9,7 +9,9 @@ import { NetworkScanner } from './components/NetworkScanner';
 import { FlowViewer } from './components/FlowViewer';
 import { MonitorConfig, PCStatus, CustomButton, LogEntry, MonitorValueEvent, MonitorValue } from './types';
 import { Button } from "@/components/ui/button";
-import { Activity, LayoutDashboard, Settings, ScrollText, Play, Radar, GitBranch } from "lucide-react";
+import { LayoutDashboard, Settings, ScrollText, Play, Radar, GitBranch, Moon, Sun } from "lucide-react";
+import opeIcon from './assets/ope-icon.png';
+import { useTheme } from './components/ThemeProvider';
 
 
 const DEFAULT_CONFIG: MonitorConfig = {
@@ -27,6 +29,7 @@ const DEFAULT_CONFIG: MonitorConfig = {
 type View = 'dashboard' | 'config' | 'logs' | 'scanner' | 'flows';
 
 function App() {
+  const { theme, toggleTheme } = useTheme();
   const [config, setConfig] = useState<MonitorConfig>(DEFAULT_CONFIG);
   const [statuses, setStatuses] = useState<Record<string, PCStatus>>({});
   const [isMonitoring, setIsMonitoring] = useState(false);
@@ -174,8 +177,8 @@ return (
     {/* Sidebar Navigation */}
     <aside className="w-64 border-r bg-muted/20 flex flex-col">
       <div className="p-6 flex items-center gap-3 border-b">
-        <div className="p-2 bg-primary rounded-lg">
-          <Activity className="w-5 h-5 text-primary-foreground" />
+        <div className="p-2 rounded-lg">
+          <img src={opeIcon} alt="ope-app" className="w-8 h-8" />
         </div>
         <h1 className="font-bold tracking-tight">ope-app</h1>
       </div>
@@ -228,7 +231,7 @@ return (
         </Button>
       </nav>
 
-      <div className="p-4 border-t">
+      <div className="p-4 border-t space-y-2">
         {isMonitoring ? (
           <Button onClick={handleStop} variant="destructive" className="w-full gap-2">
             <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
@@ -240,6 +243,25 @@ return (
             Start Monitoring
           </Button>
         )}
+        
+        <Button 
+          onClick={toggleTheme} 
+          variant="outline" 
+          className="w-full gap-2"
+          title={theme === 'light' ? 'ダークモードに切り替え' : 'ライトモードに切り替え'}
+        >
+          {theme === 'light' ? (
+            <>
+              <Moon className="w-4 h-4" />
+              ダークモード
+            </>
+          ) : (
+            <>
+              <Sun className="w-4 h-4" />
+              ライトモード
+            </>
+          )}
+        </Button>
       </div>
 
       {appVersion && (
