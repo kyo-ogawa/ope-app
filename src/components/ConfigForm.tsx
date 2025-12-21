@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { MonitorConfig, Device, CustomButton, LogicRule } from '../types';
+import { MonitorConfig, Device, CustomButton, LogicRule, CustomMonitor, MonitorArgDefinition } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import {
     Settings,
     Monitor,
@@ -21,7 +22,9 @@ import {
     Server,
     Network,
     Laptop,
-    Pencil
+    Pencil,
+    Eye,
+    Radio
 } from "lucide-react";
 import {
     Dialog,
@@ -49,6 +52,10 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
 
     const [editingLogic, setEditingLogic] = useState<LogicRule | null>(null);
     const [isEditLogicDialogOpen, setIsEditLogicDialogOpen] = useState(false);
+
+    // Custom Monitor state
+    const [editingMonitor, setEditingMonitor] = useState<CustomMonitor | null>(null);
+    const [isEditMonitorDialogOpen, setIsEditMonitorDialogOpen] = useState(false);
 
     useEffect(() => {
         invoke<string[]>('get_local_ip')
@@ -200,6 +207,65 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
         });
     };
 
+    // Custom Monitor functions
+    const handleEditMonitor = (monitor: CustomMonitor) => {
+        setEditingMonitor({ ...monitor, args: monitor.args.map(a => ({ ...a })), deviceIds: [...monitor.deviceIds] });
+        setIsEditMonitorDialogOpen(true);
+    };
+
+    const saveEditedMonitor = () => {
+        if (!editingMonitor) return;
+
+        const newConfig = {
+            ...config,
+            customMonitors: (config.customMonitors || []).map(m =>
+                m.id === editingMonitor.id ? editingMonitor : m
+            )
+        };
+        setConfig(newConfig);
+        onSave(newConfig);
+        setIsEditMonitorDialogOpen(false);
+        setEditingMonitor(null);
+    };
+
+    const addMonitor = () => {
+        const newMonitor: CustomMonitor = {
+            id: crypto.randomUUID(),
+            name: 'New Monitor',
+            address: '/status',
+            args: [{
+                name: 'Value',
+                argType: 'int',
+                unit: '',
+            }],
+            deviceIds: config.devices.length > 0 ? [config.devices[0].id] : [],
+            enabled: true
+        };
+
+        setConfig(prev => ({
+            ...prev,
+            customMonitors: [...(prev.customMonitors || []), newMonitor]
+        }));
+    };
+
+    const removeMonitor = (monitorId: string) => {
+        setConfig(prev => ({
+            ...prev,
+            customMonitors: (prev.customMonitors || []).filter(m => m.id !== monitorId)
+        }));
+    };
+
+    const toggleMonitorEnabled = (monitorId: string, enabled: boolean) => {
+        const newConfig = {
+            ...config,
+            customMonitors: (config.customMonitors || []).map(m =>
+                m.id === monitorId ? { ...m, enabled } : m
+            )
+        };
+        setConfig(newConfig);
+        onSave(newConfig);
+    };
+
     const handleSave = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(config);
@@ -210,9 +276,10 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
             <h2 className="text-2xl font-bold mb-4">Configuration</h2>
             <form onSubmit={handleSave}>
                 <Tabs defaultValue="devices" className="w-full">
-                    <TabsList className="grid w-full grid-cols-6">
+                    <TabsList className="grid w-full grid-cols-7">
                         <TabsTrigger value="devices" className="gap-2"><Laptop className="w-4 h-4" /> Devices</TabsTrigger>
                         <TabsTrigger value="targets" className="gap-2"><Monitor className="w-4 h-4" /> Targets</TabsTrigger>
+                        <TabsTrigger value="monitors" className="gap-2"><Eye className="w-4 h-4" /> Monitors</TabsTrigger>
                         <TabsTrigger value="settings" className="gap-2"><Settings className="w-4 h-4" /> Settings</TabsTrigger>
                         <TabsTrigger value="notify" className="gap-2"><Bell className="w-4 h-4" /> Notify</TabsTrigger>
                         <TabsTrigger value="buttons" className="gap-2"><MousePointer2 className="w-4 h-4" /> Buttons</TabsTrigger>
@@ -385,6 +452,386 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                 No devices configured. Please add devices in the "Devices" tab first.
                             </div>
                         )}
+                    </TabsContent>
+
+                    <TabsContent value="monitors" className="space-y-4 mt-4">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-lg font-medium flex items-center gap-2"><Eye className="w-5 h-5" /> Custom Monitors</h3>
+                            <Button type="button" onClick={addMonitor} variant="outline" className="gap-2">
+                                <Plus className="w-4 h-4" /> Add Monitor
+                            </Button>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                            デバイスから受信するOSCメッセージを監視し、ダッシュボードに表示します。
+                        </p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {(config.customMonitors || []).map((monitor) => {
+                                const targetDevices = config.devices.filter(d => monitor.deviceIds.includes(d.id));
+                                return (
+                                    <Card key={monitor.id} className={!monitor.enabled ? "opacity-50" : ""}>
+                                        <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                                            <div className="flex items-center gap-2">
+                                                <Radio className="w-4 h-4 text-muted-foreground" />
+                                                <CardTitle className="text-base font-medium">{monitor.name}</CardTitle>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <Switch
+                                                    checked={monitor.enabled}
+                                                    onCheckedChange={(checked) => toggleMonitorEnabled(monitor.id, checked)}
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8"
+                                                    onClick={() => handleEditMonitor(monitor)}
+                                                >
+                                                    <Pencil className="w-4 h-4" />
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => removeMonitor(monitor.id)}
+                                                    className="h-8 w-8 text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-sm text-muted-foreground space-y-1">
+                                                <div className="flex justify-between">
+                                                    <span>Address:</span>
+                                                    <span className="font-mono text-foreground">{monitor.address}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Targets:</span>
+                                                    <span className="font-mono text-foreground truncate max-w-[120px]" title={targetDevices.map(d => d.name).join(', ')}>
+                                                        {targetDevices.length > 0
+                                                            ? targetDevices.length === 1
+                                                                ? targetDevices[0].name
+                                                                : `${targetDevices.length} devices`
+                                                            : 'None'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Args:</span>
+                                                    <span className="font-mono text-foreground truncate max-w-[150px]" title={monitor.args.map(a => `${a.name} (${a.argType}${a.unit ? ` ${a.unit}` : ''})`).join(', ')}>
+                                                        {monitor.args.map(a => `${a.name} (${a.argType})`).join(', ')}
+                                                    </span>
+                                                </div>
+                                                {monitor.args.some(a => a.warningThreshold !== undefined || a.criticalThreshold !== undefined) && (
+                                                    <div className="flex justify-between">
+                                                        <span>Alerts:</span>
+                                                        <span className="text-foreground">
+                                                            {monitor.args.filter(a => a.warningThreshold !== undefined).length > 0 && (
+                                                                <span className="text-yellow-600">⚠️</span>
+                                                            )}
+                                                            {monitor.args.filter(a => a.criticalThreshold !== undefined).length > 0 && (
+                                                                <span className="text-red-600 ml-1">🔴</span>
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                );
+                            })}
+                        </div>
+
+                        {(config.customMonitors || []).length === 0 && (
+                            <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+                                No monitors configured. Click "Add Monitor" to create one.
+                            </div>
+                        )}
+
+                        <Dialog open={isEditMonitorDialogOpen} onOpenChange={setIsEditMonitorDialogOpen}>
+                            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                                <DialogHeader>
+                                    <DialogTitle>Edit Monitor</DialogTitle>
+                                    <DialogDescription>
+                                        Configure the OSC address and arguments to monitor.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                {editingMonitor && (
+                                    <div className="space-y-4 py-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label>Name</Label>
+                                                <Input
+                                                    value={editingMonitor.name}
+                                                    onChange={e => setEditingMonitor({ ...editingMonitor, name: e.target.value })}
+                                                    placeholder="e.g. Battery Status"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>OSC Address</Label>
+                                                <Input
+                                                    value={editingMonitor.address}
+                                                    onChange={e => setEditingMonitor({ ...editingMonitor, address: e.target.value })}
+                                                    placeholder="e.g. /battery"
+                                                    className="font-mono"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2 pt-4 border-t">
+                                            <Label>Target Devices (複数選択可)</Label>
+                                            <div className="grid grid-cols-2 gap-2 border p-3 rounded bg-muted/20 max-h-40 overflow-y-auto">
+                                                {config.devices.map(d => (
+                                                    <div key={d.id} className="flex items-center space-x-2">
+                                                        <Checkbox
+                                                            id={`monitor-device-${d.id}`}
+                                                            checked={editingMonitor.deviceIds.includes(d.id)}
+                                                            onCheckedChange={(checked) => {
+                                                                const newIds = checked
+                                                                    ? [...editingMonitor.deviceIds, d.id]
+                                                                    : editingMonitor.deviceIds.filter(id => id !== d.id);
+                                                                setEditingMonitor({ ...editingMonitor, deviceIds: newIds });
+                                                            }}
+                                                        />
+                                                        <Label htmlFor={`monitor-device-${d.id}`} className="text-sm cursor-pointer">
+                                                            {d.name} ({d.ip})
+                                                        </Label>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            {config.devices.length === 0 && (
+                                                <p className="text-sm text-muted-foreground">No devices available. Add devices in the Devices tab first.</p>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-3 pt-4 border-t">
+                                            <div className="flex justify-between items-center">
+                                                <Label className="text-base">Arguments</Label>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setEditingMonitor({
+                                                            ...editingMonitor,
+                                                            args: [...editingMonitor.args, {
+                                                                name: `Arg ${editingMonitor.args.length + 1}`,
+                                                                argType: 'int',
+                                                            }]
+                                                        });
+                                                    }}
+                                                    className="gap-2"
+                                                >
+                                                    <Plus className="w-4 h-4" /> Add Argument
+                                                </Button>
+                                            </div>
+
+                                            {editingMonitor.args.map((arg, argIndex) => (
+                                                <Card key={argIndex} className="p-4">
+                                                    <div className="space-y-3">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="font-medium text-sm">Argument {argIndex + 1}</span>
+                                                            {editingMonitor.args.length > 1 && (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    onClick={() => {
+                                                                        const newArgs = editingMonitor.args.filter((_, i) => i !== argIndex);
+                                                                        setEditingMonitor({ ...editingMonitor, args: newArgs });
+                                                                    }}
+                                                                    className="h-6 w-6 text-destructive"
+                                                                >
+                                                                    <Trash2 className="w-3 h-3" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="grid grid-cols-3 gap-3">
+                                                            <div className="space-y-1">
+                                                                <Label className="text-xs">Name</Label>
+                                                                <Input
+                                                                    value={arg.name}
+                                                                    onChange={e => {
+                                                                        const newArgs = [...editingMonitor.args];
+                                                                        newArgs[argIndex] = { ...newArgs[argIndex], name: e.target.value };
+                                                                        setEditingMonitor({ ...editingMonitor, args: newArgs });
+                                                                    }}
+                                                                    placeholder="e.g. Level"
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <Label className="text-xs">Type</Label>
+                                                                <Select
+                                                                    value={arg.argType}
+                                                                    onValueChange={(val) => {
+                                                                        const newArgs = [...editingMonitor.args];
+                                                                        newArgs[argIndex] = { ...newArgs[argIndex], argType: val as 'int' | 'float' | 'string' | 'bool' };
+                                                                        setEditingMonitor({ ...editingMonitor, args: newArgs });
+                                                                    }}
+                                                                >
+                                                                    <SelectTrigger>
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="int">Integer</SelectItem>
+                                                                        <SelectItem value="float">Float</SelectItem>
+                                                                        <SelectItem value="string">String</SelectItem>
+                                                                        <SelectItem value="bool">Boolean</SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <Label className="text-xs">Unit (optional)</Label>
+                                                                <Input
+                                                                    value={arg.unit || ''}
+                                                                    onChange={e => {
+                                                                        const newArgs = [...editingMonitor.args];
+                                                                        newArgs[argIndex] = { ...newArgs[argIndex], unit: e.target.value };
+                                                                        setEditingMonitor({ ...editingMonitor, args: newArgs });
+                                                                    }}
+                                                                    placeholder="e.g. %, ℃"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        {arg.argType === 'string' && (
+                                                            <div className="space-y-1">
+                                                                <Label className="text-xs">Value Mapping (JSON format, optional)</Label>
+                                                                <Textarea
+                                                                    value={arg.valueMapping ? JSON.stringify(arg.valueMapping, null, 2) : ''}
+                                                                    onChange={e => {
+                                                                        try {
+                                                                            const parsed = e.target.value ? JSON.parse(e.target.value) : undefined;
+                                                                            const newArgs = [...editingMonitor.args];
+                                                                            newArgs[argIndex] = { ...newArgs[argIndex], valueMapping: parsed };
+                                                                            setEditingMonitor({ ...editingMonitor, args: newArgs });
+                                                                        } catch {
+                                                                            // Invalid JSON, just update the text
+                                                                        }
+                                                                    }}
+                                                                    placeholder='{"normal": "✅ Normal", "serious": "⚠️ Serious"}'
+                                                                    className="font-mono text-xs h-20"
+                                                                />
+                                                            </div>
+                                                        )}
+
+                                                        {(arg.argType === 'int' || arg.argType === 'float') && (
+                                                            <div className="grid grid-cols-2 gap-3 p-3 bg-muted/30 rounded">
+                                                                <div className="space-y-2">
+                                                                    <Label className="text-xs font-medium text-yellow-600">⚠️ Warning Threshold</Label>
+                                                                    <div className="flex gap-2">
+                                                                        <Select
+                                                                            value={arg.warningCondition || 'below'}
+                                                                            onValueChange={(val) => {
+                                                                                const newArgs = [...editingMonitor.args];
+                                                                                newArgs[argIndex] = { ...newArgs[argIndex], warningCondition: val as 'below' | 'above' };
+                                                                                setEditingMonitor({ ...editingMonitor, args: newArgs });
+                                                                            }}
+                                                                        >
+                                                                            <SelectTrigger className="w-[90px]">
+                                                                                <SelectValue />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                <SelectItem value="below">Below</SelectItem>
+                                                                                <SelectItem value="above">Above</SelectItem>
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                        <Input
+                                                                            type="number"
+                                                                            value={arg.warningThreshold ?? ''}
+                                                                            onChange={e => {
+                                                                                const val = parseFloat(e.target.value);
+                                                                                const newArgs = [...editingMonitor.args];
+                                                                                newArgs[argIndex] = { ...newArgs[argIndex], warningThreshold: isNaN(val) ? undefined : val };
+                                                                                setEditingMonitor({ ...editingMonitor, args: newArgs });
+                                                                            }}
+                                                                            placeholder="20"
+                                                                            className="flex-1"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <div className="space-y-2">
+                                                                    <Label className="text-xs font-medium text-red-600">🔴 Critical Threshold</Label>
+                                                                    <div className="flex gap-2">
+                                                                        <Select
+                                                                            value={arg.criticalCondition || 'below'}
+                                                                            onValueChange={(val) => {
+                                                                                const newArgs = [...editingMonitor.args];
+                                                                                newArgs[argIndex] = { ...newArgs[argIndex], criticalCondition: val as 'below' | 'above' };
+                                                                                setEditingMonitor({ ...editingMonitor, args: newArgs });
+                                                                            }}
+                                                                        >
+                                                                            <SelectTrigger className="w-[90px]">
+                                                                                <SelectValue />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                <SelectItem value="below">Below</SelectItem>
+                                                                                <SelectItem value="above">Above</SelectItem>
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                        <Input
+                                                                            type="number"
+                                                                            value={arg.criticalThreshold ?? ''}
+                                                                            onChange={e => {
+                                                                                const val = parseFloat(e.target.value);
+                                                                                const newArgs = [...editingMonitor.args];
+                                                                                newArgs[argIndex] = { ...newArgs[argIndex], criticalThreshold: isNaN(val) ? undefined : val };
+                                                                                setEditingMonitor({ ...editingMonitor, args: newArgs });
+                                                                            }}
+                                                                            placeholder="10"
+                                                                            className="flex-1"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="flex items-center justify-between p-3 bg-muted/30 rounded">
+                                                            <div className="flex items-center gap-2">
+                                                                <Checkbox
+                                                                    id={`slack-${argIndex}`}
+                                                                    checked={arg.enableSlackNotification || false}
+                                                                    onCheckedChange={(checked) => {
+                                                                        const newArgs = [...editingMonitor.args];
+                                                                        newArgs[argIndex] = { ...newArgs[argIndex], enableSlackNotification: checked === true };
+                                                                        setEditingMonitor({ ...editingMonitor, args: newArgs });
+                                                                    }}
+                                                                />
+                                                                <Label htmlFor={`slack-${argIndex}`} className="text-xs cursor-pointer">
+                                                                    Slack通知 (閾値超過時)
+                                                                </Label>
+                                                            </div>
+                                                        </div>
+                                                        {arg.enableSlackNotification && (
+                                                            <div className="space-y-1">
+                                                                <Label className="text-xs">Slack Message Template</Label>
+                                                                <Input
+                                                                    value={arg.slackMessageTemplate || ''}
+                                                                    onChange={e => {
+                                                                        const newArgs = [...editingMonitor.args];
+                                                                        newArgs[argIndex] = { ...newArgs[argIndex], slackMessageTemplate: e.target.value };
+                                                                        setEditingMonitor({ ...editingMonitor, args: newArgs });
+                                                                    }}
+                                                                    placeholder="🔋 {device} battery: {value}{unit}"
+                                                                />
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    Variables: {'{device}'}, {'{value}'}, {'{unit}'}, {'{status}'}
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </Card>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={() => setIsEditMonitorDialogOpen(false)}>Cancel</Button>
+                                    <Button type="button" onClick={saveEditedMonitor}>Save changes</Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
                     </TabsContent>
 
                     <TabsContent value="settings" className="space-y-4 mt-4">

@@ -7,7 +7,7 @@ import { LogViewer } from './components/LogViewer';
 import { Dashboard } from './components/Dashboard';
 import { NetworkScanner } from './components/NetworkScanner';
 import { FlowViewer } from './components/FlowViewer';
-import { MonitorConfig, PCStatus, CustomButton, LogEntry } from './types';
+import { MonitorConfig, PCStatus, CustomButton, LogEntry, MonitorValueEvent, MonitorValue } from './types';
 import { Button } from "@/components/ui/button";
 import { Activity, LayoutDashboard, Settings, ScrollText, Play, Radar, GitBranch } from "lucide-react";
 
@@ -35,6 +35,8 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [appVersion, setAppVersion] = useState<string>('');
+  // Custom Monitor values: deviceId -> monitorId -> MonitorValue
+  const [monitorValues, setMonitorValues] = useState<Record<string, Record<string, MonitorValue>>>({});
 
   useEffect(() => {
     // Get app version
@@ -53,6 +55,20 @@ function App() {
       setButtonLastTriggered(prev => ({ ...prev, [event.payload.buttonId]: event.payload.timestamp }));
     });
 
+    const unlistenMonitorValue = listen<MonitorValueEvent>('monitor-value', (event) => {
+      const { deviceId, monitorId, args, timestamp } = event.payload;
+      setMonitorValues(prev => ({
+        ...prev,
+        [deviceId]: {
+          ...prev[deviceId],
+          [monitorId]: {
+            args,
+            lastUpdated: timestamp
+          }
+        }
+      }));
+    });
+
     // Load config
     invoke<MonitorConfig>('load_config').then((savedConfig) => {
       if (savedConfig) {
@@ -69,6 +85,7 @@ function App() {
       unlisten.then(f => f());
       unlistenLog.then(f => f());
       unlistenButton.then(f => f());
+      unlistenMonitorValue.then(f => f());
     };
   }, []);
 
@@ -257,6 +274,7 @@ return (
               buttonLastTriggered={buttonLastTriggered}
               onButtonClick={handleButtonClick}
               onValueChange={handleValueChange}
+              monitorValues={monitorValues}
             />
           </div>
 

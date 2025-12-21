@@ -76,6 +76,9 @@ export interface MonitorConfig {
 
     customButtons?: CustomButton[];
     logics?: LogicRule[];
+    
+    // Custom Monitors - 任意OSC監視
+    customMonitors?: CustomMonitor[];
 }
 
 export interface PCStatus {
@@ -137,4 +140,53 @@ export interface OscFlowEvent {
     // Optional: デバイス名（設定から解決）
     sourceName?: string;
     destName?: string;
+}
+
+// Custom Monitor types - デバイスからの任意のOSCメッセージを監視
+export type MonitorArgType = 'int' | 'float' | 'string' | 'bool';
+
+export interface MonitorArgDefinition {
+    name: string;           // 引数の表示名（例: "Battery Level", "Temperature"）
+    argType: MonitorArgType;
+    unit?: string;          // 単位（例: "%", "℃"）
+    valueMapping?: Record<string, string>;  // 値のマッピング（例: { "normal": "✅ Normal", "serious": "⚠️ Serious" }）
+    
+    // しきい値アラート
+    warningThreshold?: number;
+    warningCondition?: 'below' | 'above';
+    criticalThreshold?: number;
+    criticalCondition?: 'below' | 'above';
+    
+    // Slack通知
+    enableSlackNotification?: boolean;
+    slackMessageTemplate?: string;  // 例: "🔋 Battery low on {device}: {value}%"
+}
+
+export interface CustomMonitor {
+    id: string;
+    name: string;           // 表示名（例: "Battery Status"）
+    address: string;        // OSCアドレス（例: "/battery"）
+    args: MonitorArgDefinition[];  // 複数引数対応
+    deviceIds: string[];    // 対象デバイスのID（複数選択可）
+    enabled: boolean;
+}
+
+// 受信した値を保持する型
+export interface MonitorArgValue {
+    value: string | number | boolean;
+    displayValue: string;   // マッピング後の表示値
+    status: 'normal' | 'warning' | 'critical';
+}
+
+export interface MonitorValue {
+    args: MonitorArgValue[];
+    lastUpdated: number;    // timestamp
+}
+
+// MonitorValueイベント（バックエンドから送信）
+export interface MonitorValueEvent {
+    deviceId: string;
+    monitorId: string;
+    args: MonitorArgValue[];
+    timestamp: number;
 }

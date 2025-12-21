@@ -77,6 +77,9 @@ pub struct MonitorConfig {
 
     pub custom_buttons: Option<Vec<CustomButton>>,
     pub logics: Option<Vec<LogicRule>>,
+    
+    // Custom Monitors
+    pub custom_monitors: Option<Vec<CustomMonitor>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,4 +109,48 @@ pub struct OscFlowEvent {
     pub dest_port: u16,
     pub address: String,
     pub args: String,
+}
+
+// Custom Monitor types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MonitorArgDefinition {
+    pub name: String,
+    pub arg_type: String, // "int" | "float" | "string" | "bool"
+    pub unit: Option<String>,
+    pub value_mapping: Option<std::collections::HashMap<String, String>>,
+    pub warning_threshold: Option<f64>,
+    pub warning_condition: Option<String>, // "below" | "above"
+    pub critical_threshold: Option<f64>,
+    pub critical_condition: Option<String>, // "below" | "above"
+    pub enable_slack_notification: Option<bool>,
+    pub slack_message_template: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomMonitor {
+    pub id: String,
+    pub name: String,
+    pub address: String,
+    pub args: Vec<MonitorArgDefinition>,
+    pub device_ids: Vec<String>,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MonitorArgValue {
+    pub value: serde_json::Value, // String | Number | Bool
+    pub display_value: String,
+    pub status: String, // "normal" | "warning" | "critical"
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MonitorValueEvent {
+    pub device_id: String,
+    pub monitor_id: String,
+    pub args: Vec<MonitorArgValue>,
+    pub timestamp: u64,
 }

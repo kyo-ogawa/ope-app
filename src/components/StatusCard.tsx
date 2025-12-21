@@ -1,12 +1,8 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { PCStatus, LogicInfo } from '../types';
-import { Monitor, CheckCircle2, XCircle, ArrowRight, Activity } from 'lucide-react';
-
-// I'll use custom styling for status indicator to match original feel but cleaner
-// Or I can install badge. Let's stick to standard HTML/Tailwind for custom indicators if Badge is not installed.
-// I'll check if I installed badge. I didn't. I'll use Tailwind classes.
+import { PCStatus, LogicInfo, CustomMonitor, MonitorValue } from '../types';
+import { Monitor, CheckCircle2, XCircle, ArrowRight, Activity, Radio } from 'lucide-react';
 
 interface StatusCardProps {
     name: string;
@@ -14,9 +10,11 @@ interface StatusCardProps {
     port: number;
     status: PCStatus;
     logics?: LogicInfo[];
+    monitors?: CustomMonitor[];
+    monitorValues?: Record<string, MonitorValue>;
 }
 
-export const StatusCard: React.FC<StatusCardProps> = ({ name, ip, port, status, logics }) => {
+export const StatusCard: React.FC<StatusCardProps> = ({ name, ip, port, status, logics, monitors, monitorValues }) => {
     const isAlive = status.isAlive;
 
     const lastResponseTime = status.lastResponse > 0
@@ -56,6 +54,64 @@ export const StatusCard: React.FC<StatusCardProps> = ({ name, ip, port, status, 
                         <span>{lastResponseTime}</span>
                     </div>
                 </div>
+
+                {/* Custom Monitors */}
+                {monitors && monitors.length > 0 && (
+                    <div className="pt-2 border-t mb-4">
+                        <div className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                            <Radio className="w-3 h-3" />
+                            Monitors
+                        </div>
+                        <div className="space-y-2">
+                            {monitors.map(monitor => {
+                                const value = monitorValues?.[monitor.id];
+                                const hasValue = value && value.args.length > 0;
+                                const lastUpdated = value?.lastUpdated 
+                                    ? new Date(value.lastUpdated).toLocaleTimeString()
+                                    : null;
+
+                                return (
+                                    <div key={monitor.id} className="text-sm bg-muted/30 p-2 rounded">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="font-medium text-xs text-muted-foreground">{monitor.name}</span>
+                                            {lastUpdated && (
+                                                <span className="text-xs text-muted-foreground/60">{lastUpdated}</span>
+                                            )}
+                                        </div>
+                                        {hasValue ? (
+                                            <div className="flex flex-wrap gap-2">
+                                                {value.args.map((argVal, i) => {
+                                                    const argDef = monitor.args[i];
+                                                    return (
+                                                        <div 
+                                                            key={i} 
+                                                            className={cn(
+                                                                "flex items-center gap-1 px-2 py-1 rounded text-sm font-mono",
+                                                                argVal.status === 'normal' && "bg-muted",
+                                                                argVal.status === 'warning' && "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+                                                                argVal.status === 'critical' && "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 animate-pulse"
+                                                            )}
+                                                            title={`${argDef?.name || 'Value'}: ${argVal.displayValue}`}
+                                                        >
+                                                            {argDef && argDef.name !== 'Value' && (
+                                                                <span className="text-xs text-muted-foreground font-normal">{argDef.name}:</span>
+                                                            )}
+                                                            <span className="font-semibold">{argVal.displayValue}</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <div className="text-xs text-muted-foreground/50 italic">
+                                                Waiting for data...
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 {logics && logics.length > 0 && (
                     <div className="pt-2 border-t">

@@ -1,4 +1,4 @@
-use crate::models::{CustomButton, LogEntry, MonitorConfig, OscFlowEvent, PCStatus};
+use crate::models::{CustomButton, CustomMonitor, LogEntry, MonitorArgValue, MonitorConfig, MonitorValueEvent, OscFlowEvent, PCStatus};
 use crate::osc_service::OscService;
 use local_ip_address::local_ip;
 use rosc::OscType;
@@ -503,6 +503,7 @@ fn handle_message(
         recovery_msg,
         logics,
         custom_buttons,
+        custom_monitors,
     ) = {
         let cfg_guard = config.lock().unwrap();
         if let Some(cfg) = &*cfg_guard {
@@ -515,12 +516,36 @@ fn handle_message(
                 cfg.recovery_message.clone(),
                 cfg.logics.clone().unwrap_or_default(),
                 cfg.custom_buttons.clone().unwrap_or_default(),
+                cfg.custom_monitors.clone().unwrap_or_default(),
             )
         } else {
             return;
         }
     };
 
+    // Find target device by IP
+    let ip = addr.ip().to_string();
+    let target_device = devices.iter().find(|d| d.ip == ip).cloned();
+
+    // Check for custom monitors first
+    if let Some(ref device) = target_device {
+        for monitor in &custom_monitors {
+            // Check if this monitor is enabled, targets this device, and matches the address
+            if monitor.enabled && monitor.device_ids.contains(&device.id) && monitor.address == address {
+                // Process custom monitor
+                let event = process_custom_monitor(
+                    &device.id,
+                    &device.name,
+                    monitor,
+                    &args,
+                    &webhook_url,
+                );
+                app_handle.emit("monitor-value", event).ok();
+            }
+        }
+    }
+
+    // Handle pong for status monitoring
     if address != pong_addr {
         return;
     }
@@ -537,17 +562,6 @@ fn handle_message(
             if format!("{:?}", args[i]) != format!("{:?}", exp) {
                 return;
             }
-        }
-    }
-
-    // Find target by IP
-    let ip = addr.ip().to_string();
-
-    let mut target_device = None;
-    for device in &devices {
-        if device.ip == ip {
-            target_device = Some(device.clone());
-            break;
         }
     }
 
@@ -595,6 +609,120 @@ fn handle_message(
         if status_changed {
             broadcast_status(app_handle, statuses);
         }
+    }
+}
+
+fn process_custom_monitor(
+    device_id: &str,
+    device_name: &str,
+    monitor: &CustomMonitor,
+    osc_args: &[OscType],
+    webhook_url: &str,
+) -> MonitorValueEvent {
+    let mut arg_values = Vec::new();
+
+    for (i, arg_def) in monitor.args.iter().enumerate() {
+        let raw_value = osc_args.get(i);
+        
+        // Extract value based on type
+        let (value, numeric_value): (serde_json::Value, Option<f64>) = match raw_value {
+            Some(OscType::Int(v)) => (serde_json::Value::Number((*v).into()), Some(*v as f64)),
+            Some(OscType::Float(v)) => {
+                let n = serde_json::Number::from_f64(*v as f64).unwrap_or(serde_json::Number::from(0));
+                (serde_json::Value::Number(n), Some(*v as f64))
+            }
+            Some(OscType::String(v)) => (serde_json::Value::String(v.clone()), None),
+            Some(OscType::Bool(v)) => (serde_json::Value::Bool(*v), None),
+            _ => (serde_json::Value::Null, None),
+        };
+
+        // Determine display value (with mapping for strings)
+        let display_value = match &value {
+            serde_json::Value::String(s) => {
+                if let Some(mapping) = &arg_def.value_mapping {
+                    mapping.get(s).cloned().unwrap_or_else(|| s.clone())
+                } else {
+                    s.clone()
+                }
+            }
+            serde_json::Value::Number(n) => {
+                let mut s = n.to_string();
+                if let Some(unit) = &arg_def.unit {
+                    s.push_str(unit);
+                }
+                s
+            }
+            serde_json::Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+            _ => "N/A".to_string(),
+        };
+
+        // Determine status based on thresholds
+        let status = if let Some(num_val) = numeric_value {
+            let mut s = "normal";
+            
+            // Check warning threshold
+            if let (Some(threshold), Some(condition)) = (arg_def.warning_threshold, arg_def.warning_condition.as_ref()) {
+                let exceeded = match condition.as_str() {
+                    "below" => num_val < threshold,
+                    "above" => num_val > threshold,
+                    _ => false,
+                };
+                if exceeded {
+                    s = "warning";
+                    
+                    // Send Slack notification
+                    if arg_def.enable_slack_notification.unwrap_or(false) && !webhook_url.is_empty() {
+                        let msg = arg_def.slack_message_template.clone()
+                            .unwrap_or("⚠️ {device}: {value}{unit} ({status})".to_string())
+                            .replace("{device}", device_name)
+                            .replace("{value}", &num_val.to_string())
+                            .replace("{unit}", arg_def.unit.as_deref().unwrap_or(""))
+                            .replace("{status}", "warning");
+                        send_slack_alert(webhook_url, &msg);
+                    }
+                }
+            }
+            
+            // Check critical threshold (overrides warning)
+            if let (Some(threshold), Some(condition)) = (arg_def.critical_threshold, arg_def.critical_condition.as_ref()) {
+                let exceeded = match condition.as_str() {
+                    "below" => num_val < threshold,
+                    "above" => num_val > threshold,
+                    _ => false,
+                };
+                if exceeded {
+                    s = "critical";
+                    
+                    // Send Slack notification
+                    if arg_def.enable_slack_notification.unwrap_or(false) && !webhook_url.is_empty() {
+                        let msg = arg_def.slack_message_template.clone()
+                            .unwrap_or("🔴 {device}: {value}{unit} ({status})".to_string())
+                            .replace("{device}", device_name)
+                            .replace("{value}", &num_val.to_string())
+                            .replace("{unit}", arg_def.unit.as_deref().unwrap_or(""))
+                            .replace("{status}", "critical");
+                        send_slack_alert(webhook_url, &msg);
+                    }
+                }
+            }
+            
+            s.to_string()
+        } else {
+            "normal".to_string()
+        };
+
+        arg_values.push(MonitorArgValue {
+            value,
+            display_value,
+            status,
+        });
+    }
+
+    MonitorValueEvent {
+        device_id: device_id.to_string(),
+        monitor_id: monitor.id.clone(),
+        args: arg_values,
+        timestamp: current_time_ms(),
     }
 }
 

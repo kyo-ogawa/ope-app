@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { MonitorConfig, PCStatus, CustomButton } from '../types';
+import { MonitorConfig, PCStatus, CustomButton, MonitorValue, CustomMonitor } from '../types';
 import { StatusCard } from './StatusCard';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ interface DashboardProps {
     buttonLastTriggered: Record<string, number>;
     onButtonClick: (btn: CustomButton) => void;
     onValueChange?: (btn: CustomButton, value: number) => void;
+    monitorValues?: Record<string, Record<string, MonitorValue>>;
 }
 
 const PeriodicButtonProgress: React.FC<{ interval: number; lastTriggered: number }> = ({ interval, lastTriggered }) => {
@@ -178,7 +179,7 @@ const ValueButtonControl: React.FC<ValueButtonControlProps> = ({ btn, onValueCha
     );
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonStates, buttonLastTriggered, onButtonClick, onValueChange }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonStates, buttonLastTriggered, onButtonClick, onValueChange, monitorValues }) => {
     return (
         <div className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -197,6 +198,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonSt
                                 };
                             });
 
+                        // Get monitors for this device (filter by deviceIds)
+                        const deviceMonitors = (config.customMonitors || [])
+                            .filter(m => m.enabled && m.deviceIds.includes(device.id));
+                        const deviceMonitorValues = monitorValues?.[device.id] || {};
+
                         return (
                             <StatusCard
                                 key={device.id}
@@ -205,6 +211,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, statuses, buttonSt
                                 port={device.port}
                                 status={statuses[device.id] || { lastResponse: 0, isAlive: true }}
                                 logics={targetLogics}
+                                monitors={deviceMonitors}
+                                monitorValues={deviceMonitorValues}
                             />
                         );
                     })}
