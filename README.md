@@ -7,6 +7,10 @@
 OSC (Open Sound Control) を使用した統合監視・制御アプリケーションです。
 ターゲットデバイスの死活監視、OSCメッセージによる制御、ネットワークスキャン、フロー可視化、Slackへの通知機能を備えています。
 
+<p align="center">
+  <video src="src/screenshots/howto." controls loop autoplay muted>
+</p>
+
 ## 主な機能
 
 ### 🎯 ダッシュボード
