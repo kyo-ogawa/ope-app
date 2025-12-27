@@ -47,15 +47,13 @@ interface FlowRow {
 }
 
 export function FlowViewer({ config }: Props) {
-  const [localIp, setLocalIp] = useState<string>('');
+  const [localIps, setLocalIps] = useState<string[]>([]);
   const [activeFlows, setActiveFlows] = useState<Map<string, ActiveFlow>>(new Map());
   const [recentMessages, setRecentMessages] = useState<RecentMessage[]>([]);
 
   useEffect(() => {
     invoke<string[]>('get_local_ip').then((ips) => {
-      if (ips.length > 0) {
-        setLocalIp(ips[0]);
-      }
+      setLocalIps(ips);
     }).catch(console.error);
   }, []);
 
@@ -65,7 +63,7 @@ export function FlowViewer({ config }: Props) {
     result.push({
       id: 'app',
       name: 'App',
-      ip: localIp,
+      ip: localIps[0] || '',
       port: config.localPort,
       isApp: true,
     });
@@ -81,13 +79,13 @@ export function FlowViewer({ config }: Props) {
     });
 
     return result;
-  }, [config.devices, localIp, config.localPort]);
+  }, [config.devices, localIps, config.localPort]);
 
   const findDeviceIndex = useCallback((ip: string): number => {
-    if (ip === localIp) return 0;
+    if (localIps.includes(ip)) return 0;
     const idx = devices.findIndex(d => d.ip === ip);
     return idx >= 0 ? idx : -1;
-  }, [devices, localIp]);
+  }, [devices, localIps]);
 
   const getFlowKey = useCallback((sourceIdx: number, destIdx: number, address: string) => {
     return `${sourceIdx}->${destIdx}:${address}`;
