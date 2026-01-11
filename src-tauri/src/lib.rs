@@ -92,6 +92,114 @@ fn get_config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(config_dir.join("config.json"))
 }
 
+fn get_profiles_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    if !config_dir.exists() {
+        fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+    }
+    let profiles_dir = config_dir.join("profiles");
+    if !profiles_dir.exists() {
+        fs::create_dir_all(&profiles_dir).map_err(|e| e.to_string())?;
+    }
+    Ok(profiles_dir)
+}
+
+fn validate_profile_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Profile name is required".to_string());
+    }
+    if trimmed == "." || trimmed == ".." {
+        return Err("Profile name is invalid".to_string());
+    }
+    if trimmed.contains('/') || trimmed.contains('\\') {
+        return Err("Profile name cannot include path separators".to_string());
+    }
+    if trimmed.chars().any(|c| c.is_control()) {
+        return Err("Profile name contains invalid characters".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+#[tauri::command]
+fn list_profiles(app: AppHandle) -> Result<Vec<String>, String> {
+    let profiles_dir = get_profiles_dir(&app)?;
+    let mut profiles = Vec::new();
+    let entries = fs::read_dir(profiles_dir).map_err(|e| e.to_string())?;
+    for entry in entries {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        if let Some(stem) = path.file_stem().and_then(|name| name.to_str()) {
+            profiles.push(stem.to_string());
+        }
+    }
+    profiles.sort();
+    Ok(profiles)
+}
+
+#[tauri::command]
+fn save_profile(app: AppHandle, name: String, config: MonitorConfig) -> Result<(), String> {
+    let safe_name = validate_profile_name(&name)?;
+    let profiles_dir = get_profiles_dir(&app)?;
+    let profile_path = profiles_dir.join(format!("{}.json", safe_name));
+    let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    fs::write(profile_path, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn load_profile(app: AppHandle, name: String) -> Result<MonitorConfig, String> {
+    let safe_name = validate_profile_name(&name)?;
+    let profiles_dir = get_profiles_dir(&app)?;
+    let profile_path = profiles_dir.join(format!("{}.json", safe_name));
+    let data = fs::read_to_string(profile_path).map_err(|e| e.to_string())?;
+    let config: MonitorConfig = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    Ok(config)
+}
+
+#[tauri::command]
+fn import_profile_from_file(app: AppHandle, path: String) -> Result<String, String> {
+    let source_path = PathBuf::from(path);
+    let file_stem = source_path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Invalid profile file name".to_string())?;
+    let safe_name = validate_profile_name(file_stem)?;
+    let data = fs::read_to_string(&source_path).map_err(|e| e.to_string())?;
+    let config: MonitorConfig = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    let profiles_dir = get_profiles_dir(&app)?;
+    let profile_path = profiles_dir.join(format!("{}.json", safe_name));
+    let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    fs::write(profile_path, json).map_err(|e| e.to_string())?;
+    Ok(safe_name)
+}
+
+#[tauri::command]
+fn export_profile_to_file(app: AppHandle, name: String, path: String) -> Result<(), String> {
+    let safe_name = validate_profile_name(&name)?;
+    let profiles_dir = get_profiles_dir(&app)?;
+    let profile_path = profiles_dir.join(format!("{}.json", safe_name));
+    let data = fs::read_to_string(profile_path).map_err(|e| e.to_string())?;
+    let config: MonitorConfig = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    fs::write(PathBuf::from(path), json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_profile(app: AppHandle, name: String) -> Result<(), String> {
+    let safe_name = validate_profile_name(&name)?;
+    let profiles_dir = get_profiles_dir(&app)?;
+    let profile_path = profiles_dir.join(format!("{}.json", safe_name));
+    if !profile_path.exists() {
+        return Err("Profile not found".to_string());
+    }
+    fs::remove_file(profile_path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 fn get_interfaces() -> Vec<NetworkInterface> {
     get_network_interfaces()
@@ -117,6 +225,7 @@ fn stop_scan() {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let handle = app.handle().clone();
@@ -129,6 +238,12 @@ pub fn run() {
             stop_monitoring,
             save_config,
             load_config,
+            list_profiles,
+            save_profile,
+            load_profile,
+            import_profile_from_file,
+            export_profile_to_file,
+            delete_profile,
             send_osc,
             get_local_ip,
             toggle_periodic_button,

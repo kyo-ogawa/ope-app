@@ -10,6 +10,7 @@ OSC (Open Sound Control) を使用した統合監視・制御アプリケーシ�
 ```
 specs/
 ├── index.md                    # この文書（仕様概要）
+├── profiles.md                 # プロファイル機能
 ├── shared/
 │   └── models.md               # 共通データモデル・型定義
 ├── frontend/

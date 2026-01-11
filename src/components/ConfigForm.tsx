@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { MonitorConfig, Device, CustomButton, LogicRule, CustomMonitor } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +18,6 @@ import {
     Workflow,
     Plus,
     Trash2,
-    Save,
     Server,
     Network,
     Laptop,
@@ -26,6 +25,7 @@ import {
     Eye,
     Radio
 } from "lucide-react";
+
 import {
     Dialog,
     DialogContent,
@@ -40,9 +40,18 @@ interface ConfigFormProps {
     onSave: (config: MonitorConfig) => void;
 }
 
-
+type SettingsDraft = {
+    localPort: number;
+    interval: number;
+    timeout: number;
+    pingAddress: string;
+    pingArgs: string;
+    pongAddress: string;
+    pongArgs: string;
+};
 
 export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave }) => {
+
     const [config, setConfig] = useState<MonitorConfig>(initialConfig);
     const [localIps, setLocalIps] = useState<string[]>([]);
     const [editingDevice, setEditingDevice] = useState<Device | null>(null);
@@ -57,6 +66,11 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
     const [editingMonitor, setEditingMonitor] = useState<CustomMonitor | null>(null);
     const [isEditMonitorDialogOpen, setIsEditMonitorDialogOpen] = useState(false);
 
+    const [editingSettings, setEditingSettings] = useState<SettingsDraft | null>(null);
+    const [isEditSettingsDialogOpen, setIsEditSettingsDialogOpen] = useState(false);
+    const shouldSkipSave = useRef(true);
+
+
     useEffect(() => {
         invoke<string[]>('get_local_ip')
             .then(ips => setLocalIps(ips))
@@ -64,9 +78,20 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
     }, []);
 
     useEffect(() => {
+        shouldSkipSave.current = true;
         setConfig(initialConfig);
     }, [initialConfig]);
 
+    useEffect(() => {
+        if (shouldSkipSave.current) {
+            shouldSkipSave.current = false;
+            return;
+        }
+        if (config.interval >= config.timeout) {
+            return;
+        }
+        onSave(config);
+    }, [config, onSave]);
 
 
     const handleEditDevice = (device: Device) => {
@@ -84,7 +109,6 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
             )
         };
         setConfig(newConfig);
-        onSave(newConfig);
         setIsEditDialogOpen(false);
         setEditingDevice(null);
     };
@@ -135,7 +159,6 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
             )
         };
         setConfig(newConfig);
-        onSave(newConfig);
         setIsEditButtonDialogOpen(false);
         setEditingButton(null);
     };
@@ -179,7 +202,6 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
         }
         const newConfig = { ...config, logics: newLogics };
         setConfig(newConfig);
-        onSave(newConfig);
         setIsEditLogicDialogOpen(false);
     };
 
@@ -223,7 +245,6 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
             )
         };
         setConfig(newConfig);
-        onSave(newConfig);
         setIsEditMonitorDialogOpen(false);
         setEditingMonitor(null);
     };
@@ -263,18 +284,45 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
             )
         };
         setConfig(newConfig);
-        onSave(newConfig);
     };
 
-    const handleSave = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(config);
+    const handleEditSettings = () => {
+        setEditingSettings({
+            localPort: config.localPort,
+            interval: config.interval,
+            timeout: config.timeout,
+            pingAddress: config.pingAddress || '',
+            pingArgs: config.pingArgs || '',
+            pongAddress: config.pongAddress || '',
+            pongArgs: config.pongArgs || ''
+        });
+        setIsEditSettingsDialogOpen(true);
     };
+
+    const saveEditedSettings = () => {
+        if (!editingSettings) return;
+
+        const newConfig = {
+            ...config,
+            localPort: editingSettings.localPort,
+            interval: editingSettings.interval,
+            timeout: editingSettings.timeout,
+            pingAddress: editingSettings.pingAddress,
+            pingArgs: editingSettings.pingArgs,
+            pongAddress: editingSettings.pongAddress,
+            pongArgs: editingSettings.pongArgs
+        };
+
+        setConfig(newConfig);
+        setIsEditSettingsDialogOpen(false);
+        setEditingSettings(null);
+    };
+
 
     return (
         <div className="mt-8">
             <h2 className="text-2xl font-bold mb-4">Configuration</h2>
-            <form onSubmit={handleSave}>
+            <div>
                 <Tabs defaultValue="devices" className="w-full">
                     <TabsList className="grid w-full grid-cols-7">
                         <TabsTrigger value="devices" className="gap-2"><Laptop className="w-4 h-4" /> Devices</TabsTrigger>
@@ -416,7 +464,7 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                 )}
                                 <DialogFooter>
                                     <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
-                                    <Button type="button" onClick={saveEditedDevice}>Save changes</Button>
+                                    <Button type="button" onClick={saveEditedDevice}>Apply</Button>
                                 </DialogFooter>
                             </DialogContent>
                         </Dialog>
@@ -828,7 +876,7 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                 )}
                                 <DialogFooter>
                                     <Button type="button" variant="outline" onClick={() => setIsEditMonitorDialogOpen(false)}>Cancel</Button>
-                                    <Button type="button" onClick={saveEditedMonitor}>Save changes</Button>
+                                    <Button type="button" onClick={saveEditedMonitor}>Apply</Button>
                                 </DialogFooter>
                             </DialogContent>
                         </Dialog>
@@ -836,69 +884,129 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
 
                     <TabsContent value="settings" className="space-y-4 mt-4">
                         <Card>
-                            <CardHeader>
+
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0">
                                 <CardTitle className="flex items-center gap-2"><Network className="w-5 h-5" /> Network & Timing</CardTitle>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-2"
+                                    onClick={handleEditSettings}
+                                >
+                                    <Pencil className="w-4 h-4" /> Edit Settings
+                                </Button>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div className="space-y-2">
                                         <Label>Local Port (Listen)</Label>
-                                        <Input
-                                            type="number"
-                                            value={config.localPort}
-                                            onChange={e => setConfig({ ...config, localPort: parseInt(e.target.value) })}
-                                        />
+                                        <Input type="number" value={config.localPort} disabled />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Interval (ms)</Label>
-                                        <Input
-                                            type="number"
-                                            value={config.interval}
-                                            onChange={e => setConfig({ ...config, interval: parseInt(e.target.value) })}
-                                        />
+                                        <Input type="number" value={config.interval} disabled />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Timeout (ms)</Label>
-                                        <Input
-                                            type="number"
-                                            value={config.timeout}
-                                            onChange={e => setConfig({ ...config, timeout: parseInt(e.target.value) })}
-                                        />
+                                        <Input type="number" value={config.timeout} disabled />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
                                     <div className="space-y-2">
                                         <Label>Ping Address</Label>
-                                        <Input
-                                            value={config.pingAddress || '/ping'}
-                                            onChange={e => setConfig({ ...config, pingAddress: e.target.value })}
-                                        />
+                                        <Input value={config.pingAddress || '/ping'} disabled />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Ping Args (comma separated)</Label>
-                                        <Input
-                                            value={config.pingArgs || ''}
-                                            onChange={e => setConfig({ ...config, pingArgs: e.target.value })}
-                                            placeholder="e.g. 1, test"
-                                        />
+                                        <Input value={config.pingArgs || ''} placeholder="e.g. 1, test" disabled />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Pong Address (Expected)</Label>
-                                        <Input
-                                            value={config.pongAddress || '/pong'}
-                                            onChange={e => setConfig({ ...config, pongAddress: e.target.value })}
-                                        />
+                                        <Input value={config.pongAddress || '/pong'} disabled />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Pong Args (Expected match)</Label>
-                                        <Input
-                                            value={config.pongArgs || ''}
-                                            onChange={e => setConfig({ ...config, pongArgs: e.target.value })}
-                                        />
+                                        <Input value={config.pongArgs || ''} disabled />
                                     </div>
                                 </div>
                             </CardContent>
                         </Card>
+
+                        <Dialog open={isEditSettingsDialogOpen} onOpenChange={setIsEditSettingsDialogOpen}>
+                            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                                <DialogHeader>
+                                    <DialogTitle>Edit Settings</DialogTitle>
+                                    <DialogDescription>Update network and timing parameters.</DialogDescription>
+                                </DialogHeader>
+
+                                {editingSettings && (
+                                    <div className="space-y-4 py-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="space-y-2">
+                                                <Label>Local Port (Listen)</Label>
+                                                <Input
+                                                    type="number"
+                                                    value={editingSettings.localPort}
+                                                    onChange={e => setEditingSettings({ ...editingSettings, localPort: Number(e.target.value) || 0 })}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Interval (ms)</Label>
+                                                <Input
+                                                    type="number"
+                                                    value={editingSettings.interval}
+                                                    onChange={e => setEditingSettings({ ...editingSettings, interval: Number(e.target.value) || 0 })}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Timeout (ms)</Label>
+                                                <Input
+                                                    type="number"
+                                                    value={editingSettings.timeout}
+                                                    onChange={e => setEditingSettings({ ...editingSettings, timeout: Number(e.target.value) || 0 })}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                                            <div className="space-y-2">
+                                                <Label>Ping Address</Label>
+                                                <Input
+                                                    value={editingSettings.pingAddress}
+                                                    onChange={e => setEditingSettings({ ...editingSettings, pingAddress: e.target.value })}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Ping Args (comma separated)</Label>
+                                                <Input
+                                                    value={editingSettings.pingArgs}
+                                                    onChange={e => setEditingSettings({ ...editingSettings, pingArgs: e.target.value })}
+                                                    placeholder="e.g. 1, test"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Pong Address (Expected)</Label>
+                                                <Input
+                                                    value={editingSettings.pongAddress}
+                                                    onChange={e => setEditingSettings({ ...editingSettings, pongAddress: e.target.value })}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Pong Args (Expected match)</Label>
+                                                <Input
+                                                    value={editingSettings.pongArgs}
+                                                    onChange={e => setEditingSettings({ ...editingSettings, pongArgs: e.target.value })}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={() => setIsEditSettingsDialogOpen(false)}>Cancel</Button>
+                                    <Button type="button" onClick={saveEditedSettings}>Apply</Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
                     </TabsContent>
 
                     <TabsContent value="notify" className="space-y-4 mt-4">
@@ -1313,7 +1421,7 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                 )}
                                 <DialogFooter>
                                     <Button type="button" variant="outline" onClick={() => setIsEditButtonDialogOpen(false)}>Cancel</Button>
-                                    <Button type="button" onClick={saveEditedButton}>Save changes</Button>
+                                    <Button type="button" onClick={saveEditedButton}>Apply</Button>
                                 </DialogFooter>
                             </DialogContent>
                         </Dialog>
@@ -1450,7 +1558,7 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                 )}
                                 <DialogFooter>
                                     <Button type="button" variant="outline" onClick={() => setIsEditLogicDialogOpen(false)}>Cancel</Button>
-                                    <Button type="button" onClick={saveEditedLogic}>Save changes</Button>
+                                    <Button type="button" onClick={saveEditedLogic}>Apply</Button>
                                 </DialogFooter>
                             </DialogContent>
                         </Dialog>
@@ -1462,17 +1570,9 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                 Interval must be less than Timeout (Interval &lt; Timeout)
                             </p>
                         )}
-                        <Button
-                            type="submit"
-                            size="lg"
-                            className="gap-2"
-                            disabled={config.interval >= config.timeout}
-                        >
-                            <Save className="w-4 h-4" /> Save & Start Monitoring
-                        </Button>
                     </div>
                 </Tabs>
-            </form>
+            </div>
         </div>
     );
 };

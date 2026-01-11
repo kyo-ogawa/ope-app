@@ -29,6 +29,44 @@ fn save_config(config: MonitorConfig) -> Result<(), String>
 **引数**: 
 - `config`: 保存する設定
 
+## プロファイル関連
+
+### list_profiles
+
+保存済みプロファイル一覧を取得。
+
+```rust
+#[tauri::command]
+fn list_profiles(app: AppHandle) -> Result<Vec<String>, String>
+```
+
+**戻り値**: プロファイル名の配列
+
+### save_profile
+
+プロファイルを保存。
+
+```rust
+#[tauri::command]
+fn save_profile(app: AppHandle, name: String, config: MonitorConfig) -> Result<(), String>
+```
+
+**引数**:
+- `name`: プロファイル名
+- `config`: 保存する設定
+
+### load_profile
+
+プロファイルを読み込み。
+
+```rust
+#[tauri::command]
+fn load_profile(app: AppHandle, name: String) -> Result<MonitorConfig, String>
+```
+
+**引数**:
+- `name`: プロファイル名
+
 ## 監視関連
 
 ### start_monitoring
