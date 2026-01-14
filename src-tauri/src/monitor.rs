@@ -295,9 +295,6 @@ impl MonitorService {
                     }
                 };
 
-                // Debug: log interval value
-                println!("Monitor loop: interval={}ms", interval);
-
                 // Send Pings
                 let ping_args_vec = parse_string_args(&ping_args);
                 {
@@ -410,7 +407,6 @@ impl MonitorService {
                     slept += to_sleep;
                 }
             }
-            println!("Monitor loop stopped");
         });
 
         // Store the handle

@@ -92,7 +92,6 @@ impl OscService {
                     }
                 }
             }
-            println!("OSC Listener stopped");
         });
         
         self.listener = Some(ListenerHandle { running, thread: handle });
