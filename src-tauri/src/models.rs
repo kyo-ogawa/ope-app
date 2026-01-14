@@ -88,21 +88,6 @@ pub struct MonitorConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Profile {
-    pub name: String,
-    pub config: MonitorConfig,
-    pub updated_at: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProfileStore {
-    pub active_profile: Option<String>,
-    pub profiles: Vec<Profile>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct PCStatus {
     pub last_response: u64, // timestamp in ms
     pub is_alive: bool,
