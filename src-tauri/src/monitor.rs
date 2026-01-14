@@ -5,13 +5,18 @@ use rosc::OscType;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
-pub struct MonitorService {
+struct MonitorHandle {
     running: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+pub struct MonitorService {
+    monitor_handle: Arc<Mutex<Option<MonitorHandle>>>,
     osc_service: Arc<Mutex<OscService>>,
     config: Arc<Mutex<Option<MonitorConfig>>>,
     statuses: Arc<Mutex<HashMap<String, PCStatus>>>,
@@ -29,7 +34,7 @@ impl MonitorService {
         let local_ip_str = local_ip().map(|ip| ip.to_string()).unwrap_or_else(|_| "127.0.0.1".to_string());
         
         Self {
-            running: Arc::new(AtomicBool::new(false)),
+            monitor_handle: Arc::new(Mutex::new(None)),
             osc_service: Arc::new(Mutex::new(OscService::new())),
             config: Arc::new(Mutex::new(None)),
             statuses: Arc::new(Mutex::new(HashMap::new())),
@@ -43,8 +48,11 @@ impl MonitorService {
     }
 
     pub fn start(&self, config: MonitorConfig) {
+        // Stop existing monitor if running
         self.stop();
-        self.running.store(true, Ordering::SeqCst);
+        
+        // Create new running flag for this monitor instance
+        let running = Arc::new(AtomicBool::new(true));
 
         // Update config
         {
@@ -106,7 +114,7 @@ impl MonitorService {
             osc.start_listener(config.local_port, tx, log_tx.clone(), flow_tx.clone(), local_ip_str.clone());
         }
 
-        let running = self.running.clone();
+        let running_clone = running.clone();
         let config_arc = self.config.clone();
         let statuses_arc = self.statuses.clone();
         let osc_service_arc = self.osc_service.clone();
@@ -115,9 +123,11 @@ impl MonitorService {
         let button_enabled_arc = self.button_enabled.clone();
         let flow_tx_arc = self.flow_tx.clone();
         let local_ip_arc = self.local_ip.clone();
+        let monitor_handle_arc = self.monitor_handle.clone();
 
         // Spawn Monitor Loop
-        thread::spawn(move || {
+        let handle = thread::spawn(move || {
+            let running = running_clone;
             // We need to handle both OSC messages and Interval loop.
             // Since we use a channel for OSC, we can use a loop that checks channel and time.
             // Or separate threads.
@@ -285,6 +295,9 @@ impl MonitorService {
                     }
                 };
 
+                // Debug: log interval value
+                println!("Monitor loop: interval={}ms", interval);
+
                 // Send Pings
                 let ping_args_vec = parse_string_args(&ping_args);
                 {
@@ -385,18 +398,71 @@ impl MonitorService {
                     broadcast_status(&app_handle, &statuses_arc);
                 }
 
+                // Sleep in small increments to allow quick response to stop signal
                 let elapsed = loop_start.elapsed();
-                if elapsed < Duration::from_millis(interval) {
-                    thread::sleep(Duration::from_millis(interval) - elapsed);
+                let remaining = Duration::from_millis(interval).saturating_sub(elapsed);
+                let sleep_chunk = Duration::from_millis(100);
+                let mut slept = Duration::ZERO;
+                
+                while slept < remaining && running.load(Ordering::SeqCst) {
+                    let to_sleep = std::cmp::min(sleep_chunk, remaining - slept);
+                    thread::sleep(to_sleep);
+                    slept += to_sleep;
                 }
             }
+            println!("Monitor loop stopped");
         });
+
+        // Store the handle
+        {
+            let mut handle_guard = monitor_handle_arc.lock().unwrap();
+            *handle_guard = Some(MonitorHandle {
+                running,
+                thread: Some(handle),
+            });
+        }
     }
 
     pub fn stop(&self) {
-        self.running.store(false, Ordering::SeqCst);
-        let osc = self.osc_service.lock().unwrap();
-        osc.stop_listener();
+        // Take the monitor handle
+        let handle_opt = {
+            let mut handle_guard = self.monitor_handle.lock().unwrap();
+            handle_guard.take()
+        };
+        
+        if let Some(mut handle) = handle_opt {
+            // Signal this monitor to stop
+            handle.running.store(false, Ordering::SeqCst);
+            
+            // Stop OSC listener
+            {
+                let mut osc = self.osc_service.lock().unwrap();
+                osc.stop_listener();
+            }
+            
+            // Wait for the monitor thread to finish
+            if let Some(thread) = handle.thread.take() {
+                let timeout = Duration::from_secs(2);
+                let start = std::time::Instant::now();
+                
+                while !thread.is_finished() {
+                    if start.elapsed() > timeout {
+                        eprintln!("Warning: Monitor thread did not stop within timeout");
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(100));
+                }
+                
+                if thread.is_finished() {
+                    let _ = thread.join();
+                }
+            }
+        }
+    }
+
+    pub fn update_config(&self, config: MonitorConfig) {
+        let mut cfg = self.config.lock().unwrap();
+        *cfg = Some(config);
     }
 
     pub fn send_osc(&self, ip: &str, port: u16, address: &str, args: Vec<crate::models::OscArg>) {

@@ -80,6 +80,10 @@ pub struct MonitorConfig {
     
     // Custom Monitors
     pub custom_monitors: Option<Vec<CustomMonitor>>,
+    
+    // Auto start monitoring on app launch
+    #[serde(default)]
+    pub auto_start: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

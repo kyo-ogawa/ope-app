@@ -26,6 +26,11 @@ fn stop_monitoring(state: State<'_, AppState>) {
 }
 
 #[tauri::command]
+fn update_config(state: State<'_, AppState>, config: MonitorConfig) {
+    state.monitor_service.update_config(config);
+}
+
+#[tauri::command]
 fn send_osc(
     state: State<'_, AppState>,
     ip: String,
@@ -236,6 +241,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_monitoring,
             stop_monitoring,
+            update_config,
             save_config,
             load_config,
             list_profiles,

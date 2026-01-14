@@ -79,6 +79,9 @@ export interface MonitorConfig {
     
     // Custom Monitors - 任意OSC監視
     customMonitors?: CustomMonitor[];
+    
+    // Auto start monitoring on app launch
+    autoStart?: boolean;
 }
 
 export interface PCStatus {

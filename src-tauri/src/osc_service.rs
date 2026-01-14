@@ -3,14 +3,19 @@ use rosc::{encoder, OscMessage, OscPacket, OscType};
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-pub struct OscService {
+struct ListenerHandle {
     running: Arc<AtomicBool>,
+    thread: JoinHandle<()>,
+}
+
+pub struct OscService {
     sender_socket: UdpSocket, // For sending
+    listener: Option<ListenerHandle>,
 }
 
 impl OscService {
@@ -20,8 +25,8 @@ impl OscService {
         sender_socket.set_nonblocking(true).ok();
 
         Self {
-            running: Arc::new(AtomicBool::new(false)),
             sender_socket,
+            listener: None,
         }
     }
 
@@ -33,12 +38,11 @@ impl OscService {
         flow_tx: mpsc::Sender<OscFlowEvent>,
         local_ip: String,
     ) {
-        self.stop_listener();
-        self.running.store(true, Ordering::SeqCst);
-
-        let running = self.running.clone();
+        // Each listener gets its own running flag
+        let running = Arc::new(AtomicBool::new(true));
+        let running_clone = running.clone();
         
-        thread::spawn(move || {
+        let handle = thread::spawn(move || {
             let socket = match UdpSocket::bind(format!("0.0.0.0:{}", port)) {
                 Ok(s) => s,
                 Err(e) => {
@@ -57,7 +61,7 @@ impl OscService {
 
             let mut buf = [0u8; 65535];
 
-            while running.load(Ordering::SeqCst) {
+            while running_clone.load(Ordering::SeqCst) {
                 match socket.recv_from(&mut buf) {
                     Ok((size, addr)) => {
                         let packet = &buf[..size];
@@ -90,10 +94,35 @@ impl OscService {
             }
             println!("OSC Listener stopped");
         });
+        
+        self.listener = Some(ListenerHandle { running, thread: handle });
     }
 
-    pub fn stop_listener(&self) {
-        self.running.store(false, Ordering::SeqCst);
+    pub fn stop_listener(&mut self) {
+        // Take the listener handle if it exists
+        let listener = match self.listener.take() {
+            Some(l) => l,
+            None => return,
+        };
+        
+        // Signal this specific listener to stop
+        listener.running.store(false, Ordering::SeqCst);
+        
+        // Wait for the listener thread to finish (with timeout)
+        // The thread should exit within ~500ms due to socket read timeout
+        let timeout = Duration::from_secs(1);
+        let start = std::time::Instant::now();
+        
+        while !listener.thread.is_finished() {
+            if start.elapsed() > timeout {
+                eprintln!("Warning: OSC listener thread did not stop within timeout");
+                return;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        
+        // Join the thread
+        let _ = listener.thread.join();
     }
 
     pub fn send(

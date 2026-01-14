@@ -238,9 +238,13 @@ function App() {
     invoke<MonitorConfig>('load_config').then((savedConfig) => {
       if (savedConfig) {
         setConfig(savedConfig);
-        // Auto-start
-        invoke('start_monitoring', { config: savedConfig });
-        setIsMonitoring(true);
+        // Auto-start if enabled in config
+        if (savedConfig.autoStart) {
+          setTimeout(() => {
+            invoke('start_monitoring', { config: savedConfig });
+            setIsMonitoring(true);
+          }, 1000);
+        }
       }
     }).catch((err) => {
       console.error('Failed to load config:', err);
@@ -259,7 +263,8 @@ function App() {
     invoke('save_config', { config: newConfig });
 
     if (isMonitoring) {
-      invoke('start_monitoring', { config: newConfig });
+      // Update config without restarting monitor
+      invoke('update_config', { config: newConfig });
     }
 
     if (options.skipProfileSave) {

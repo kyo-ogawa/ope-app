@@ -930,6 +930,18 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({ initialConfig, onSave })
                                         <Input value={config.pongArgs || ''} disabled />
                                     </div>
                                 </div>
+                                <div className="flex items-center justify-between pt-4 border-t">
+                                    <div className="space-y-0.5">
+                                        <Label>Auto Start Monitoring</Label>
+                                        <p className="text-sm text-muted-foreground">
+                                            Automatically start monitoring when the app launches
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        checked={config.autoStart ?? false}
+                                        onCheckedChange={(checked) => setConfig({ ...config, autoStart: checked })}
+                                    />
+                                </div>
                             </CardContent>
                         </Card>
 
